@@ -1,0 +1,58 @@
+# .gitignore de la raíz: aplica a TODO el repositorio (S0X_AY/ y vinculo/).
+# Las reglas de datos van primero a propósito (RD-06): un archivo de datos
+# commiteado por error queda en el historial de git de forma irreversible.
+
+# --- Datos: nunca versionar una sábana telefónica, ni real ni sintética ---
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.parquet
+*.dump
+*.backup
+*.sqlite
+*.db
+data/
+sabanas/
+
+# --- Secretos ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Node ---
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# --- Docker: volúmenes de datos ---
+docker/postgres/data/
+pgdata/
+
+# --- Entregas empaquetadas para Canvas ---
+*.zip
+
+# --- Editor y sistema ---
+# De .vscode/ solo se versiona la configuración del proyecto (sin secretos ni preferencias
+# personales). ".vscode/*" y no ".vscode/": si se ignora la carpeta, los "!" no funcionan.
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+.DS_Store

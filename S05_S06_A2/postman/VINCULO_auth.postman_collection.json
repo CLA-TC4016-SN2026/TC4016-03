@@ -1,0 +1,189 @@
+{
+  "info": {
+    "name": "VÍNCULO · S05-S06-A2 Autenticación",
+    "description": "Flujo de autenticación para el video de S05-S06-A2. Usar con el entorno «VÍNCULO local». Primero la carpeta 0 (fuera de cámara), después la carpeta 1 en orden.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0 · Preparación (fuera de cámara)",
+      "item": [
+        {
+          "name": "0.1 Login administrador",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tokenAdmin', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"admin@vinculo.example\",\n  \"contrasena\": \"{{adminContrasena}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "0.2 Alta analista (para el 403)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('analistaContrasena')) {",
+                  "  pm.environment.set('analistaContrasena', 'Analista-' + pm.variables.replaceIn('{{$randomUUID}}'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 (o 409 si ya existía)', () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{tokenAdmin}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"analista@vinculo.example\",\n  \"nombreCompleto\": \"Analista Sintético\",\n  \"contrasena\": \"{{analistaContrasena}}\",\n  \"roles\": [\"ANALISTA\"]\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "0.3 Login analista",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('tokenAnalista', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"analista@vinculo.example\",\n  \"contrasena\": \"{{analistaContrasena}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 · Video (en este orden)",
+      "item": [
+        {
+          "name": "1 Register (201)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{tokenAdmin}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"coordinador@vinculo.example\",\n  \"nombreCompleto\": \"Coordinador Sintético\",\n  \"contrasena\": \"Coordinador-Demo-2026\",\n  \"roles\": [\"COORDINADOR\"]\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "2 Login (200 + token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) pm.environment.set('token', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"coordinador@vinculo.example\",\n  \"contrasena\": \"Coordinador-Demo-2026\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "3 Me (200)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "4 Crear caso con token (201)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numeroSolicitud\": \"S-300\",\n  \"mpSolicitanteId\": \"{{mpId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/casos"
+          }
+        },
+        {
+          "name": "5 Crear caso sin token (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numeroSolicitud\": \"S-300\",\n  \"mpSolicitanteId\": \"{{mpId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/casos"
+          }
+        },
+        {
+          "name": "6 Crear caso con rol ANALISTA (403)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{tokenAnalista}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"numeroSolicitud\": \"S-300\",\n  \"mpSolicitanteId\": \"{{mpId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/casos"
+          }
+        }
+      ]
+    }
+  ]
+}

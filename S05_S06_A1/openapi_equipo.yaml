@@ -1,0 +1,481 @@
+openapi: 3.0.3
+info:
+  title: VÍNCULO API — autenticación y casos
+  version: 0.2.0
+  description: |
+    Contrato de lo implementado en S05-S06 (`vinculo/backend/`): autenticación con JWT y CRUD
+    de casos. Es un extracto adaptado de `S04_A2/openapi.yaml`, que sigue siendo el contrato
+    completo del sistema.
+
+    Diferencias con S04, por la consigna de S05-S06-A2:
+    - Autenticación en `/auth/register`, `/auth/login` y `/auth/me` (S04: `/v1/sesiones`).
+    - Rutas sin el prefijo `/v1`.
+    - `/auth/register` existe, pero solo lo usa el `ADMINISTRADOR`: las cuentas las crea el
+      administrador técnico (S-07, H-08). No hay autorregistro.
+    - Rol nuevo `ADMINISTRADOR`: gestiona cuentas y no ve casos (separación de funciones).
+
+    Seguridad:
+    - Todas las operaciones exigen `BearerAuth` (seguridad global) salvo las que declaran
+      `security: []`.
+    - `x-roles` lista los roles activos que pueden ejecutar la operación. Un token válido con
+      otro rol recibe `403`.
+    - El token lleva un solo rol activo, elegido al iniciar sesión (D-2, S04-A1).
+  contact:
+    name: Jose Benjamin Oviedo Morales (A01797548) — Equipo 3
+  license:
+    name: Uso académico (TC4016, Tecnológico de Monterrey)
+    url: https://github.com/CLA-TC4016-SN2026/TC4016--A01797548
+servers:
+  - url: /api
+    description: |
+      A través de nginx (`vinculo/frontend/nginx.conf`), que quita el prefijo `/api`.
+      La API nativa en desarrollo (`127.0.0.1:8000`) expone las rutas sin `/api`.
+security:
+  - BearerAuth: []
+tags:
+  - name: salud
+  - name: auth
+    description: Registro (solo administrador), inicio de sesión y usuario actual (RF-01)
+  - name: casos
+    description: CRUD de casos (RF-02)
+
+paths:
+  /health:
+    get:
+      tags: [salud]
+      operationId: salud
+      summary: Disponibilidad de la API y de la base
+      security: []
+      x-roles: []
+      responses:
+        '200':
+          description: API y base disponibles.
+        '503':
+          description: Base de datos no disponible.
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: registrarUsuario
+      summary: Crear una cuenta (solo administrador)
+      description: |
+        La contraseña se guarda como hash bcrypt y nunca aparece en la respuesta.
+      x-roles: [ADMINISTRADOR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoUsuario'
+      responses:
+        '201':
+          description: Cuenta creada.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '409':
+          description: Ya existe una cuenta con ese correo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: iniciarSesion
+      summary: Iniciar sesión y obtener el JWT
+      description: |
+        Correo inexistente, contraseña incorrecta, cuenta inactiva y rol no asignado reciben la
+        misma respuesta `401` (RF-01-AC-3). `rol` solo es obligatorio si la cuenta tiene más de
+        un rol.
+      security: []
+      x-roles: []
+      x-acceptance-criteria: [RF-01-AC-1, RF-01-AC-3]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credenciales'
+      responses:
+        '200':
+          description: Credenciales válidas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+        '401':
+          description: Credenciales incorrectas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Credenciales incorrectas
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: usuarioActual
+      summary: Datos del usuario autenticado y su rol activo
+      x-roles: [ADMINISTRADOR, COORDINADOR, ANALISTA, MP_PERITO, AUDITOR]
+      x-acceptance-criteria: [RF-01-AC-1]
+      responses:
+        '200':
+          description: Usuario autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioActual'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+
+  /casos:
+    get:
+      tags: [casos]
+      operationId: listarCasos
+      summary: Listar casos
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-02-AC-1]
+      responses:
+        '200':
+          description: Casos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Caso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+    post:
+      tags: [casos]
+      operationId: crearCaso
+      summary: Crear un caso (solo coordinador)
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-8]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoCaso'
+      responses:
+        '201':
+          description: Caso creado.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Caso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+
+  /casos/{folio}:
+    parameters:
+      - name: folio
+        in: path
+        required: true
+        schema:
+          type: string
+          example: C-000001
+    get:
+      tags: [casos]
+      operationId: obtenerCaso
+      summary: Detalle de un caso
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      responses:
+        '200':
+          description: Caso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Caso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+    put:
+      tags: [casos]
+      operationId: reemplazarCaso
+      summary: Reemplazar los campos editables de un caso (solo coordinador)
+      x-roles: [COORDINADOR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioCaso'
+      responses:
+        '200':
+          description: Caso actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Caso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+    delete:
+      tags: [casos]
+      operationId: borrarCaso
+      summary: Borrar un caso (solo coordinador)
+      x-roles: [COORDINADOR]
+      responses:
+        '204':
+          description: Caso borrado.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `Authorization: Bearer <token>`. JWT firmado con HS256; secreto en `JWT_SECRET` y
+        vigencia en `JWT_EXPIRATION` (variables de entorno). Claims: `sub` (id del usuario),
+        `rol` (rol activo), `iat`, `exp`.
+
+  responses:
+    NoAutenticado:
+      description: Falta el token, o es inválido o expiró.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: No autenticado
+    PermisoInsuficiente:
+      description: Token válido, pero el rol activo no tiene permiso para esta operación.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Permiso insuficiente
+    NoEncontrado:
+      description: El recurso no existe.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NoProcesable:
+      description: El cuerpo no cumple el esquema o una regla del dominio.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          description: Mensaje, o lista de errores de validación.
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+
+    Rol:
+      type: string
+      enum: [ADMINISTRADOR, COORDINADOR, ANALISTA, MP_PERITO, AUDITOR]
+
+    NuevoUsuario:
+      type: object
+      additionalProperties: false
+      required: [correo, nombreCompleto, contrasena, roles]
+      properties:
+        correo:
+          type: string
+          format: email
+        nombreCompleto:
+          type: string
+          minLength: 1
+          maxLength: 200
+        contrasena:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 12
+          maxLength: 72
+          description: bcrypt solo usa los primeros 72 bytes; por eso el máximo.
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Rol'
+
+    Usuario:
+      type: object
+      description: Nunca incluye la contraseña ni su hash.
+      required: [id, correo, nombreCompleto, roles, activo, creadoEn]
+      properties:
+        id:
+          type: string
+          format: uuid
+        correo:
+          type: string
+          format: email
+        nombreCompleto:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rol'
+        activo:
+          type: boolean
+        creadoEn:
+          type: string
+          format: date-time
+
+    UsuarioActual:
+      allOf:
+        - $ref: '#/components/schemas/Usuario'
+        - type: object
+          required: [rolActivo]
+          properties:
+            rolActivo:
+              $ref: '#/components/schemas/Rol'
+
+    Credenciales:
+      type: object
+      additionalProperties: false
+      required: [correo, contrasena]
+      properties:
+        correo:
+          type: string
+          format: email
+        contrasena:
+          type: string
+          format: password
+          writeOnly: true
+        rol:
+          $ref: '#/components/schemas/Rol'
+
+    Token:
+      type: object
+      required: [accessToken, tokenType, expiraEn, rolActivo]
+      properties:
+        accessToken:
+          type: string
+          description: JWT.
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiraEn:
+          type: integer
+          description: Segundos de vigencia del token.
+        rolActivo:
+          $ref: '#/components/schemas/Rol'
+
+    EstadoCaso:
+      type: string
+      enum: [ABIERTO, CERRADO]
+
+    NuevoCaso:
+      type: object
+      additionalProperties: false
+      required: [numeroSolicitud, mpSolicitanteId]
+      properties:
+        numeroSolicitud:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: S-100
+        mpSolicitanteId:
+          type: string
+          format: uuid
+        analistaId:
+          type: string
+          format: uuid
+          nullable: true
+
+    CambioCaso:
+      type: object
+      additionalProperties: false
+      required: [numeroSolicitud, mpSolicitanteId, analistaId, estado]
+      properties:
+        numeroSolicitud:
+          type: string
+          minLength: 1
+          maxLength: 100
+        mpSolicitanteId:
+          type: string
+          format: uuid
+        analistaId:
+          type: string
+          format: uuid
+          nullable: true
+        estado:
+          $ref: '#/components/schemas/EstadoCaso'
+
+    Caso:
+      type: object
+      required: [folio, numeroSolicitud, estado, mpSolicitanteId, analistaId, creadoEn, cerradoEn]
+      properties:
+        folio:
+          type: string
+          example: C-000001
+        numeroSolicitud:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoCaso'
+        mpSolicitanteId:
+          type: string
+          format: uuid
+        analistaId:
+          type: string
+          format: uuid
+          nullable: true
+        creadoEn:
+          type: string
+          format: date-time
+        cerradoEn:
+          type: string
+          format: date-time
+          nullable: true

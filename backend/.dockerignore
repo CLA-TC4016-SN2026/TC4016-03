@@ -1,0 +1,14 @@
+# Lo que NO entra al contexto de construcción de la imagen.
+# Sobre todo: secretos y el entorno local de la Mac (arm64), que no sirve en amd64.
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+Dockerfile
+.dockerignore

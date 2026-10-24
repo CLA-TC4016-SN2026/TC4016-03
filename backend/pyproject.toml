@@ -1,0 +1,19 @@
+[project]
+name = "vinculo-backend"
+version = "0.1.0"
+description = "API de VÍNCULO: análisis de sábanas telefónicas (CDR) para investigación criminal"
+# Versión fijada por el proyecto, no por el sistema (ajuste de versiones del 27/09/2026).
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "fastapi>=0.141.1",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.15.0",
+    "pydantic[email]>=2.13.5",
+    "pyjwt>=2.15.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+# Aplicación, no librería: no se construye ni se publica como paquete.
+package = false
