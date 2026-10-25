@@ -160,6 +160,31 @@ foráneas:
 
 ![Modelo entidad-relación](imagenes/esquema_bd_er.png)
 
+### Correspondencia entre clases y tablas
+
+El diagrama de clases tiene 38 elementos y el esquema 22 tablas. No falta ninguna entidad: cada
+elemento se persiste con una de cuatro técnicas.
+
+| Técnica | Clases del diagrama | Dónde quedan en `esquema_bd.sql` |
+|---|---|---|
+| **Tabla propia** (19) | `Usuario`, `Caso`, `LineaObjetivo`, `Asignacion`, `ArchivoRecibido`, `PerfilConcesionario`, `VersionPerfil`, `TraduccionTipo`, `Carga`, `RenglonNoInterpretable`, `Evento`, `Radiobase`, `ProductoAnalisis`, `ZonaCobertura`, `Revision`, `Dictamen`, `EntradaBitacora`, `SelloDiario`, `ValoresFabrica` | `usuarios`, `casos`, `lineas_objetivo`, `asignaciones`, `archivos`, `perfiles_concesionario`, `versiones_perfil`, `traducciones_tipo`, `cargas`, `renglones_no_interpretables`, `eventos`, `radiobases`, `productos_analisis`, `zonas_cobertura`, `revisiones`, `dictamenes`, `entradas_bitacora`, `sellos_diarios`, `valores_fabrica` |
+| **Herencia en una sola tabla** (10) | `Sabana`, `CatalogoRadiobases` | `archivos`, distinguidas por `tipo` (`SABANA`, `CATALOGO`) |
+| | `RankingContactos`, `PatronPernocta`, `Desplazamiento`, `CambioIdentificadores`, `RupturaPatron`, `ActividadDiurna`, `CoUbicacion`, `Intermediarios` | `productos_analisis`, distinguidas por `tipo` (`CONTACTOS`, `PERNOCTA`, `DESPLAZAMIENTO`, `IDENTIFICADORES`, `RUPTURAS`, `ACTIVIDAD_DIURNA`, `COUBICACION`, `INTERMEDIARIOS`) |
+| **Objeto de valor incrustado** (1) | `UbicacionReportada` | Columnas `latitud`, `longitud`, `azimut`, `cell_id` y `lac_tac` de `eventos` |
+| **Tipo enumerado** (8) | `Rol`, `EstadoCaso`, `FuncionAsignacion`, `EstadoCarga`, `TipoEvento`, `Direccion`, `Resultado`, `MarcaDuplicado` | `CREATE TYPE … AS ENUM` con los mismos valores que `openapi_equipo.yaml`; `Rol` se usa como arreglo `rol[]` en `usuarios.roles` |
+
+Las otras 3 tablas resuelven asociaciones muchos a muchos del diagrama y no son clases:
+`producto_lineas` (`ProductoAnalisis` → `LineaObjetivo` : analiza), `producto_eventos`
+(`ProductoAnalisis` → `Evento` : eventosDeOrigen) y `dictamen_productos` (`Dictamen` o--
+`ProductoAnalisis`).
+
+**Por qué una sola tabla por jerarquía.** Ninguna subclase declara atributos propios en el
+diagrama: todo lo que tienen está en `ArchivoRecibido` o en `ProductoAnalisis`. Una tabla por
+subclase solo agregaría tablas vacías unidas por llave primaria, sin integridad que ganar. Lo
+que varía entre productos son sus parámetros, que van en `parametros` (`jsonb`). El objeto de
+valor no tiene identidad ni ciclo de vida propios: existe solo dentro de su `Evento`, con
+cardinalidad 1 a 1, así que una tabla aparte no aportaría nada.
+
 ## 7. Límites conocidos
 
 - **El trigger de bitácora no detiene a un superusuario**, que puede desactivarlo. La protección
