@@ -1,0 +1,145 @@
+{
+  "info": {
+    "name": "VÍNCULO — S05-S06-A1 (CRUD del núcleo)",
+    "description": "Colección del Equipo 3 para probar los servicios CRUD contra openapi_equipo.yaml.\n\nAntes de usarla, en la pestaña Variables de la colección captura en «Current value» (no se exporta): adminContrasena y coordContrasena. baseUrl: http://127.0.0.1:8080/api (contenedores) o http://127.0.0.1:8000 (uvicorn).\n\nLos scripts guardan el token, el id del MP y el folio, para que cada petición use el resultado de la anterior. Solo datos sintéticos (RD-06).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8080/api" },
+    { "key": "adminCorreo", "value": "admin@vinculo.example" },
+    { "key": "adminContrasena", "value": "" },
+    { "key": "coordCorreo", "value": "coordinador@vinculo.example" },
+    { "key": "coordContrasena", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "mpId", "value": "" },
+    { "key": "folio", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Preparación (una sola vez, fuera del video)",
+      "item": [
+        {
+          "name": "Login administrador",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200', () => pm.response.to.have.status(200));",
+            "pm.collectionVariables.set('token', pm.response.json().accessToken);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"correo\": \"{{adminCorreo}}\",\n  \"contrasena\": \"{{adminContrasena}}\"\n}" }
+          }
+        },
+        {
+          "name": "Registrar coordinador",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201 o 409 si ya existe', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"correo\": \"{{coordCorreo}}\",\n  \"nombreCompleto\": \"Coordinadora de Prueba\",\n  \"contrasena\": \"{{coordContrasena}}\",\n  \"roles\": [\"COORDINADOR\"]\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Video",
+      "item": [
+        {
+          "name": "1 · POST /auth/login (coordinador)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200', () => pm.response.to.have.status(200));",
+            "pm.collectionVariables.set('token', pm.response.json().accessToken);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"correo\": \"{{coordCorreo}}\",\n  \"contrasena\": \"{{coordContrasena}}\"\n}" }
+          }
+        },
+        {
+          "name": "2 · GET /usuarios?rol=MP_PERITO",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200', () => pm.response.to.have.status(200));",
+            "const mp = pm.response.json()[0];",
+            "if (mp) pm.collectionVariables.set('mpId', mp.id);"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "url": "{{baseUrl}}/usuarios?rol=MP_PERITO"
+          }
+        },
+        {
+          "name": "3 · POST /casos",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('folio', pm.response.json().folio);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/casos",
+            "body": { "mode": "raw", "raw": "{\n  \"numeroSolicitud\": \"S-100\",\n  \"mpSolicitanteId\": \"{{mpId}}\",\n  \"lineas\": [\n    { \"msisdn\": \"55 1234 5678\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "4 · GET /casos/{folio}",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 y mismo folio', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().folio).to.eql(pm.collectionVariables.get('folio')); });"
+          ] } }],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "url": "{{baseUrl}}/casos/{{folio}}"
+          }
+        },
+        {
+          "name": "5 · POST /casos/{folio}/lineas",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('201', () => pm.response.to.have.status(201));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/casos/{{folio}}/lineas",
+            "body": { "mode": "raw", "raw": "{\n  \"msisdn\": \"044 55 8765 4321\"\n}" }
+          }
+        },
+        {
+          "name": "6 · PATCH /casos/{folio} (cerrar)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('200 y CERRADO', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().estado).to.eql('CERRADO'); });"
+          ] } }],
+          "request": {
+            "method": "PATCH",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/casos/{{folio}}",
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"CERRADO\"\n}" }
+          }
+        },
+        {
+          "name": "7 · POST /casos/{folio}/lineas en caso cerrado (409)",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('409', () => pm.response.to.have.status(409));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/casos/{{folio}}/lineas",
+            "body": { "mode": "raw", "raw": "{\n  \"msisdn\": \"5511112222\"\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

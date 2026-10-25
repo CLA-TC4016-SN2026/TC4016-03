@@ -1,30 +1,43 @@
 openapi: 3.0.3
 info:
-  title: VÍNCULO API — autenticación y casos
-  version: 0.2.0
+  title: VÍNCULO API — contrato consolidado del Equipo 3
+  version: 1.1.0
   description: |
-    Contrato de lo implementado en S05-S06 (`vinculo/backend/`): autenticación con JWT y CRUD
-    de casos. Es un extracto adaptado de `S04_A2/openapi.yaml`, que sigue siendo el contrato
-    completo del sistema.
+    Contrato de la API REST de VÍNCULO, sistema de análisis de sábanas telefónicas (CDR).
+    Especificación *spec-first*. Contrato consolidado del Equipo 3 (S05-S06-A1): parte de
+    `S04_A2/openapi.yaml` de J. B. Oviedo, base acordada por el equipo el 2026-10-24, con las
+    resoluciones documentadas en `S05_S06_A1/diferencias_diseno.md`. Fuente de verdad del
+    backend (`backend/`) y de las pruebas (S09).
 
-    Diferencias con S04, por la consigna de S05-S06-A2:
-    - Autenticación en `/auth/register`, `/auth/login` y `/auth/me` (S04: `/v1/sesiones`).
-    - Rutas sin el prefijo `/v1`.
-    - `/auth/register` existe, pero solo lo usa el `ADMINISTRADOR`: las cuentas las crea el
-      administrador técnico (S-07, H-08). No hay autorregistro.
-    - Rol nuevo `ADMINISTRADOR`: gestiona cuentas y no ve casos (separación de funciones).
+    - Requerimientos: `S03_A1/SRS_equipo.md`. Cada operación declara en
+      `x-acceptance-criteria` los criterios Given-When-Then que satisface.
+    - Arquitectura: `S04_A1/decision_arquitectonica.md` (ADR-001 a ADR-003).
+    - Las operaciones de siguientes releases se marcan con `x-release: 2`.
+
+    Reglas de dominio que el contrato hace cumplir:
+    - **RD-01:** ningún esquema tiene campos de contenido de comunicaciones.
+    - **RD-02:** las ubicaciones se devuelven solo como áreas (`Polygon` de GeoJSON), nunca como
+      punto.
+    - **RNF-02:** un caso no asignado responde exactamente igual que un caso inexistente (`404`).
+    - Fechas en ISO 8601 con zona (`date-time`); los eventos se guardan en UTC (RF-05).
+
+    Convenciones (revisión REST, `S04_A2/revision_rest.md`):
+    - Rutas con sustantivos en plural y kebab-case; las acciones se modelan como recursos
+      (`/verificaciones`, `/regeneraciones`, `/versiones`, `/revision`).
+    - Colecciones grandes con paginación por cursor (`cursor`, `limite`).
+    - `409` para conflictos con el estado del recurso; `422` para reglas de validación del dominio.
 
     Seguridad:
-    - Todas las operaciones exigen `BearerAuth` (seguridad global) salvo las que declaran
-      `security: []`.
-    - `x-roles` lista los roles activos que pueden ejecutar la operación. Un token válido con
-      otro rol recibe `403`.
-    - El token lleva un solo rol activo, elegido al iniciar sesión (D-2, S04-A1).
+    - Todas las operaciones exigen `BearerAuth` salvo las que declaran `security: []`.
+    - `x-roles` lista los roles activos que pueden ejecutar la operación (matriz de RNF-01).
+      Un token válido con otro rol recibe `403`. El token lleva un solo rol activo (D-2).
+    - Errores en `application/problem+json` (RFC 9457): `400` si el cuerpo no cumple el
+      esquema, `422` si viola una regla del dominio.
   contact:
-    name: Jose Benjamin Oviedo Morales (A01797548) — Equipo 3
+    name: Equipo 3 — F. L. Armendáriz, J. F. González, J. B. Oviedo, M. Sánchez
   license:
     name: Uso académico (TC4016, Tecnológico de Monterrey)
-    url: https://github.com/CLA-TC4016-SN2026/TC4016--A01797548
+    url: https://github.com/CLA-TC4016-SN2026/TC4016-03
 servers:
   - url: /api
     description: |
@@ -34,24 +47,60 @@ security:
   - BearerAuth: []
 tags:
   - name: salud
+    description: Disponibilidad del servicio (operación)
   - name: auth
     description: Registro (solo administrador), inicio de sesión y usuario actual (RF-01)
+  - name: usuarios
+    description: Consulta de usuarios para asignaciones (las cuentas las crea el administrador técnico, S-07)
   - name: casos
-    description: CRUD de casos (RF-02)
+    description: Casos, líneas objetivo y asignaciones (RF-02, RF-27)
+  - name: archivos
+    description: Registro y verificación del archivo original (RF-03, RF-15)
+  - name: cargas
+    description: Carga con perfil y zona horaria; ejecución asíncrona en el worker (RF-04, RF-05, RF-23)
+  - name: eventos
+    description: Eventos normalizados y decisiones sobre duplicados (RF-06, RF-23)
+  - name: perfiles
+    description: Perfiles de concesionario versionados (RF-29)
+  - name: productos
+    description: Productos de análisis (RF-07 a RF-14, RF-16, RF-18, RF-24 a RF-26)
+  - name: dictamenes
+    description: Exportación, regeneración y verificación de dictámenes (RF-19, RF-20)
+  - name: bitacora
+    description: Bitácora encadenada y sellos diarios (RF-21, RF-22, RNF-05)
+  - name: configuracion
+    description: Valores de fábrica (RF-28)
 
 paths:
   /health:
+    servers:
+      - url: /api
+        description: Sin versión; también lo usa el healthcheck de Docker Compose.
     get:
       tags: [salud]
-      operationId: salud
-      summary: Disponibilidad de la API y de la base
+      operationId: obtenerSalud
+      summary: Salud de la API y de su conexión a PostgreSQL/PostGIS
+      description: Ya implementado (`vinculo/backend/src/api/health.py`). No expone detalles del error.
       security: []
       x-roles: []
+      x-acceptance-criteria: []
       responses:
         '200':
-          description: API y base disponibles.
+          description: API viva y base accesible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
         '503':
           description: Base de datos no disponible.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: Base de datos no disponible
 
   /auth/register:
     post:
@@ -61,6 +110,7 @@ paths:
       description: |
         La contraseña se guarda como hash bcrypt y nunca aparece en la respuesta.
       x-roles: [ADMINISTRADOR]
+      x-acceptance-criteria: []
       requestBody:
         required: true
         content:
@@ -78,19 +128,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/PermisoInsuficiente'
         '409':
-          description: Ya existe una cuenta con ese correo.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflicto'
         '422':
           $ref: '#/components/responses/NoProcesable'
-
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
   /auth/login:
     post:
       tags: [auth]
@@ -116,17 +165,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Token'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
         '401':
-          description: Credenciales incorrectas.
+          description: Credenciales incorrectas (misma respuesta para cualquier causa).
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                detail: Credenciales incorrectas
+                $ref: '#/components/schemas/Problema'
         '422':
           $ref: '#/components/responses/NoProcesable'
-
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
   /auth/me:
     get:
       tags: [auth]
@@ -144,32 +194,82 @@ paths:
         '401':
           $ref: '#/components/responses/NoAutenticado'
 
-  /casos:
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+  /usuarios:
     get:
-      tags: [casos]
-      operationId: listarCasos
-      summary: Listar casos
-      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
-      x-acceptance-criteria: [RF-02-AC-1]
+      tags: [usuarios]
+      operationId: listarUsuarios
+      summary: Listar usuarios activos de la unidad
+      description: Solo coordinador. Sirve para elegir analistas, MP y peritos al asignar.
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: []
+      parameters:
+        - name: rol
+          in: query
+          schema:
+            $ref: '#/components/schemas/Rol'
       responses:
         '200':
-          description: Casos.
+          description: Usuarios.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Caso'
+                  $ref: '#/components/schemas/UsuarioResumen'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos:
+    get:
+      tags: [casos]
+      operationId: listarCasos
+      summary: Mis casos (o todos los de la unidad, para el coordinador)
+      description: |
+        Analista, MP y perito ven solo los casos que tienen asignados. El coordinador ve todos y
+        puede filtrar los que no tienen analista (RF-02-AC-6). El auditor no lista casos (RNF-04).
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-6, RF-02-AC-7, RF-17-AC-1]
+      parameters:
+        - name: sinAnalista
+          in: query
+          schema:
+            type: boolean
+        - name: estado
+          in: query
+          schema:
+            $ref: '#/components/schemas/EstadoCaso'
+      responses:
+        '200':
+          description: Casos visibles para el rol activo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CasoResumen'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
     post:
       tags: [casos]
       operationId: crearCaso
-      summary: Crear un caso (solo coordinador)
+      summary: Crear un caso a partir de la solicitud del MP
+      description: Solo coordinador (RF-02-AC-8).
       x-roles: [COORDINADOR]
-      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-8]
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-2, RF-02-AC-8]
       requestBody:
         required: true
         content:
@@ -187,26 +287,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Caso'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/PermisoInsuficiente'
         '422':
           $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
 
   /casos/{folio}:
     parameters:
-      - name: folio
-        in: path
-        required: true
-        schema:
-          type: string
-          example: C-000001
+      - $ref: '#/components/parameters/Folio'
     get:
       tags: [casos]
       operationId: obtenerCaso
       summary: Detalle de un caso
+      description: |
+        Un caso no asignado y un folio inexistente reciben respuestas idénticas (`404`), y el
+        intento queda como "acceso rechazado" en la bitácora (RF-02-AC-9, RNF-02).
       x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-02-AC-5, RF-02-AC-9, RF-17-AC-1, RF-21-AC-2]
       responses:
         '200':
           description: Caso.
@@ -220,11 +323,18 @@ paths:
           $ref: '#/components/responses/PermisoInsuficiente'
         '404':
           $ref: '#/components/responses/NoEncontrado'
-    put:
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    patch:
       tags: [casos]
-      operationId: reemplazarCaso
-      summary: Reemplazar los campos editables de un caso (solo coordinador)
+      operationId: actualizarCaso
+      summary: Cerrar el caso
+      description: |
+        Solo coordinador. El único cambio admitido es `estado: CERRADO`. Un caso cerrado es de
+        solo lectura (RF-27-AC-1).
+      x-release: 2
       x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-27-AC-1]
       requestBody:
         required: true
         content:
@@ -238,6 +348,139 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Caso'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/datos:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    delete:
+      tags: [casos]
+      operationId: eliminarDatosCaso
+      summary: Eliminar eventos y copias de originales al vencer el plazo de conservación
+      description: |
+        Solo coordinador y solo con el caso cerrado y el plazo de S-13 vencido. La bitácora, los
+        hashes y los registros de exportación se conservan (RF-27-AC-4).
+      x-release: 2
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-27-AC-3, RF-27-AC-4]
+      responses:
+        '204':
+          description: Datos eliminados.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: El caso no está cerrado o el plazo de conservación no ha terminado; indica la fecha en que termina.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/lineas:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [casos]
+      operationId: listarLineas
+      summary: Líneas objetivo del caso
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-02-AC-3]
+      responses:
+        '200':
+          description: Líneas objetivo.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LineaObjetivo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [casos]
+      operationId: agregarLinea
+      summary: Agregar una línea objetivo (máximo 20)
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-02-AC-3, RF-02-AC-4]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaLinea'
+      responses:
+        '201':
+          description: Línea agregada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LineaObjetivo'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/analista:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    put:
+      tags: [casos]
+      operationId: asignarAnalista
+      summary: Asignar o reasignar el analista del caso
+      description: |
+        Idempotente. El analista anterior pierde el acceso desde su siguiente petición, aunque
+        tenga la sesión abierta (RNF-03).
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-02-AC-1, RF-02-AC-5, RF-02-AC-8]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenciaUsuario'
+      responses:
+        '200':
+          description: Asignación vigente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asignacion'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
@@ -246,20 +489,1247 @@ paths:
           $ref: '#/components/responses/NoEncontrado'
         '422':
           $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
     delete:
       tags: [casos]
-      operationId: borrarCaso
-      summary: Borrar un caso (solo coordinador)
+      operationId: retirarAnalista
+      summary: Retirar el caso al analista sin reasignarlo
       x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-02-AC-6, RF-02-AC-8]
       responses:
         '204':
-          description: Caso borrado.
+          description: El caso queda sin analista.
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/PermisoInsuficiente'
         '404':
           $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/peritos:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    post:
+      tags: [casos]
+      operationId: asignarPerito
+      summary: Asignar un perito adicional
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-02-AC-7]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferenciaUsuario'
+      responses:
+        '201':
+          description: Perito asignado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asignacion'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/peritos/{usuarioId}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/UsuarioId'
+    delete:
+      tags: [casos]
+      operationId: retirarPerito
+      summary: Retirar a un perito del caso
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: []
+      responses:
+        '204':
+          description: Perito retirado.
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/resumen:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [casos]
+      operationId: obtenerResumenCaso
+      summary: Resumen de calidad de datos del caso
+      description: Eventos sin ubicar, discrepancias de coordenadas y campos no disponibles por archivo.
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-15-AC-1, RF-15-AC-2, RF-15-AC-4, RF-29-AC-6]
+      x-nonfunctional: [RNF-19]
+      responses:
+        '200':
+          description: Resumen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumenCaso'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/archivos:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [archivos]
+      operationId: listarArchivos
+      summary: Archivos registrados en el caso
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-15-AC-3]
+      responses:
+        '200':
+          description: Archivos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Archivo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [archivos]
+      operationId: registrarArchivo
+      summary: Registrar un archivo original (sábana o catálogo)
+      description: |
+        Guarda la copia sin modificar y calcula su SHA-256. Si el caso ya tiene un archivo con el
+        mismo hash, responde `409` y solo lo registra si se reenvía con `confirmarDuplicado=true`
+        (RF-03-AC-5). Solo analista del caso; un MP recibe `403` y se registra el acceso rechazado
+        (RF-01-AC-2). Con el caso cerrado responde `409` (RF-27-AC-1).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-01-AC-2, RF-03-AC-1, RF-03-AC-2, RF-03-AC-5, RF-15-AC-3, RF-27-AC-1]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NuevoArchivo'
+      responses:
+        '201':
+          description: Archivo registrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Archivo'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Ya existe un archivo con el mismo hash en el caso (requiere `confirmarDuplicado=true`), o el caso está cerrado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/archivos/{archivoId}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/ArchivoId'
+    get:
+      tags: [archivos]
+      operationId: obtenerArchivo
+      summary: Registro de un archivo (oficio, hash, zona y perfil de su carga)
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-03-AC-2, RF-04-AC-6, RF-05-AC-5, RF-29-AC-4]
+      responses:
+        '200':
+          description: Archivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Archivo'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/archivos/{archivoId}/verificaciones:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/ArchivoId'
+    post:
+      tags: [archivos]
+      operationId: verificarIntegridadArchivo
+      summary: Verificar integridad del original
+      description: |
+        Crea una verificación: recalcula el SHA-256 de la copia guardada y lo compara con el
+        registrado. El resultado queda en la bitácora (RF-03-AC-4). La pueden ejecutar el analista
+        del caso y el auditor, que no ve contenido (RNF-04).
+      x-roles: [ANALISTA, AUDITOR]
+      x-acceptance-criteria: [RF-03-AC-3, RF-03-AC-4]
+      responses:
+        '200':
+          description: Resultado de la verificación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificacionIntegridad'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/cargas:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [cargas]
+      operationId: listarCargas
+      summary: Cargas del caso, con su estado
+      description: Permite retomar una carga preparada o en proceso tras recargar la SPA.
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-1, RF-05-AC-5]
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            $ref: '#/components/schemas/EstadoCarga'
+      responses:
+        '200':
+          description: Cargas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Carga'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [cargas]
+      operationId: crearCarga
+      summary: Preparar la carga de un archivo con perfil y zona horaria
+      description: |
+        Interpreta el archivo con el perfil y la zona IANA indicados y devuelve una vista previa
+        de las primeras 10 filas, sin aplicar nada todavía (RF-04-AC-2). Las validaciones que
+        impiden completar la carga responden `422`: falta de zona (RF-05-AC-1), columna del
+        perfil ausente (RF-04-AC-3) o MSISDN objetivo ajeno al caso (RF-04-AC-7). Con el caso
+        cerrado responde `409` (RF-27-AC-1).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-2, RF-04-AC-3, RF-04-AC-4, RF-04-AC-7, RF-05-AC-1, RF-27-AC-1, RF-29-AC-6]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevaCarga'
+      responses:
+        '201':
+          description: Carga preparada, en espera de confirmación.
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /api/v1/casos/VIN-2026-000123/cargas/3f0c…
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Carga'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/cargas/{cargaId}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/CargaId'
+    get:
+      tags: [cargas]
+      operationId: obtenerCarga
+      summary: Estado, avance y resumen de calidad de una carga
+      description: La SPA consulta este recurso para mostrar el avance (RNF-08).
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-1, RF-04-AC-5, RF-04-AC-6, RF-04-AC-11, RF-05-AC-5, RF-23-AC-4, RF-15-AC-2]
+      responses:
+        '200':
+          description: Carga.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Carga'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    patch:
+      tags: [cargas]
+      operationId: confirmarCarga
+      summary: Confirmar o cancelar una carga preparada
+      description: |
+        `estado: CONFIRMADA` encola la carga y responde `202`; el worker la ejecuta completa en una
+        transacción (RNF-10). `estado: CANCELADA` la descarta sin aplicar cambios. Solo se admite
+        desde `PREPARADA`; en cualquier otro estado responde `409`.
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-2, RF-05-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioCarga'
+      responses:
+        '200':
+          description: Carga cancelada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Carga'
+        '202':
+          description: Carga encolada; consultar su avance en `Location`.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Carga'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/cargas/{cargaId}/renglones-no-interpretables:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/CargaId'
+    get:
+      tags: [cargas]
+      operationId: listarRenglonesNoInterpretables
+      summary: Renglones que no se pudieron interpretar, con su motivo
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-5]
+      responses:
+        '200':
+          description: Renglones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RenglonNoInterpretable'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/eventos:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [eventos]
+      operationId: listarEventos
+      summary: Eventos normalizados del caso
+      description: |
+        Cada evento conserva los valores originales del archivo junto a los normalizados
+        (RF-04-AC-10, RF-23-AC-3). El auditor no puede consultarlos (RNF-04). Orden estable por
+        `fechaHoraUtc` e `id` (RNF-11); la paginación por cursor no repite ni salta eventos aunque
+        cambien exclusiones entre páginas.
+      x-roles: [COORDINADOR, ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-1, RF-04-AC-4, RF-04-AC-8, RF-04-AC-9, RF-04-AC-10, RF-05-AC-2, RF-05-AC-3, RF-05-AC-4, RF-06-AC-1, RF-06-AC-2, RF-09-AC-2, RF-15-AC-5, RF-22-AC-2, RF-23-AC-2, RF-23-AC-3, RF-23-AC-4, RF-29-AC-6]
+      parameters:
+        - name: lineaId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: archivoId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: desde
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: hasta
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: tipo
+          in: query
+          schema:
+            $ref: '#/components/schemas/TipoEvento'
+        - name: marca
+          in: query
+          schema:
+            $ref: '#/components/schemas/MarcaDuplicado'
+        - name: sinUbicar
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Página de eventos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaEventos'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/eventos/{eventoId}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/EventoId'
+    patch:
+      tags: [eventos]
+      operationId: actualizarEvento
+      summary: Excluir un duplicado o revertir la exclusión
+      description: Solo cambia `excluido`; queda en la bitácora (RF-06-AC-3, RF-21-AC-1).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-06-AC-3, RF-18-AC-2, RF-21-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioEvento'
+      responses:
+        '200':
+          description: Evento actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /perfiles:
+    get:
+      tags: [perfiles]
+      operationId: listarPerfiles
+      summary: Perfiles de concesionario (propios y de otros analistas, para copiar)
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-29-AC-5]
+      responses:
+        '200':
+          description: Perfiles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Perfil'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [perfiles]
+      operationId: crearPerfil
+      summary: Crear un perfil (desde cero o como copia de otro)
+      description: |
+        Con `copiaDe`, crea un perfil propio en versión 1 a partir del perfil indicado
+        (RF-29-AC-5). No se puede guardar mientras algún valor de `Tipo` no tenga tipo, dirección
+        y resultado (RF-29-AC-2).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-4, RF-29-AC-2, RF-29-AC-3, RF-29-AC-5, RF-29-AC-6]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoPerfil'
+      responses:
+        '201':
+          description: Perfil creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Perfil'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /propuestas-mapeo:
+    post:
+      tags: [perfiles]
+      operationId: proponerMapeo
+      summary: Proponer la asignación de columnas a partir de un archivo de ejemplo
+      description: |
+        Lee encabezados y primeras filas y propone un mapeo por nombre y patrón de valores. El
+        archivo de ejemplo **no se conserva** (RF-29-AC-3), por eso la propuesta no es un recurso
+        persistente: responde `200` sin `Location`. Va fuera de `/perfiles` para no competir con
+        `/perfiles/{perfilId}`.
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-29-AC-1, RF-29-AC-2, RF-29-AC-3]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Mapeo propuesto y valores distintos de la columna de tipo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropuestaMapeo'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /perfiles/{perfilId}:
+    parameters:
+      - $ref: '#/components/parameters/PerfilId'
+    get:
+      tags: [perfiles]
+      operationId: obtenerPerfil
+      summary: Perfil con su versión vigente
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-29-AC-4]
+      responses:
+        '200':
+          description: Perfil.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Perfil'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /perfiles/{perfilId}/versiones:
+    parameters:
+      - $ref: '#/components/parameters/PerfilId'
+    get:
+      tags: [perfiles]
+      operationId: listarVersionesPerfil
+      summary: Historial de versiones del perfil
+      description: Permite saber con qué definición exacta se interpretó cada carga (RF-29-AC-4).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-29-AC-4]
+      responses:
+        '200':
+          description: Versiones, de la 1 a la vigente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VersionPerfil'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [perfiles]
+      operationId: crearVersionPerfil
+      summary: Editar el perfil creando la versión N+1
+      description: |
+        Solo el propietario. Cada edición es un recurso nuevo (no idempotente, por eso `POST` y no
+        `PUT`); las cargas anteriores siguen apuntando a su versión (RF-29-AC-4).
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-04-AC-4, RF-29-AC-2, RF-29-AC-4, RF-29-AC-5, RF-29-AC-6]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefinicionPerfil'
+      responses:
+        '201':
+          description: Versión creada; pasa a ser la vigente.
+          headers:
+            Location:
+              schema:
+                type: string
+              example: /api/v1/perfiles/7a1e…/versiones/3
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionPerfil'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /perfiles/{perfilId}/versiones/{version}:
+    parameters:
+      - $ref: '#/components/parameters/PerfilId'
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [perfiles]
+      operationId: obtenerVersionPerfil
+      summary: Una versión concreta del perfil (inmutable)
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-29-AC-4]
+      responses:
+        '200':
+          description: Versión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionPerfil'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/productos:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [productos]
+      operationId: listarProductos
+      summary: Productos de análisis del caso
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-17-AC-1, RF-17-AC-2]
+      responses:
+        '200':
+          description: Productos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductoResumen'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [productos]
+      operationId: calcularProducto
+      summary: Calcular un producto de análisis
+      description: |
+        Ejecuta la estrategia del `tipo` indicado (ADR-002) sobre las líneas y parámetros dados.
+        Los parámetros omitidos toman los valores de fábrica (S-08) y quedan declarados en el
+        producto (RD-04). Solo analista del caso.
+
+        Idempotente por contenido: si ya existe un producto con el mismo `tipo`, `lineaIds`,
+        parámetros efectivos (tras aplicar los de fábrica) y la misma versión de los datos del caso,
+        responde `200` con ese producto y no agrega una entrada a la bitácora (RF-21-AC-3). Un
+        cálculo nuevo responde `201`.
+      x-roles: [ANALISTA]
+      x-acceptance-criteria: [RF-07-AC-1, RF-07-AC-2, RF-07-AC-3, RF-07-AC-4, RF-07-AC-5, RF-07-AC-6, RF-07-AC-7, RF-07-AC-8, RF-07-AC-9, RF-08-AC-1, RF-08-AC-2, RF-08-AC-3, RF-08-AC-4, RF-08-AC-5, RF-08-AC-6, RF-08-AC-7, RF-08-AC-8, RF-09-AC-1, RF-09-AC-2, RF-09-AC-3, RF-10-AC-1, RF-10-AC-2, RF-10-AC-3, RF-11-AC-1, RF-11-AC-2, RF-11-AC-3, RF-11-AC-4, RF-11-AC-5, RF-11-AC-6, RF-12-AC-1, RF-12-AC-2, RF-12-AC-3, RF-13-AC-1, RF-13-AC-2, RF-13-AC-3, RF-13-AC-4, RF-13-AC-5, RF-14-AC-1, RF-14-AC-2, RF-14-AC-3, RF-21-AC-1, RF-21-AC-3, RF-23-AC-1, RF-24-AC-1, RF-24-AC-2, RF-24-AC-3, RF-24-AC-4, RF-25-AC-1, RF-25-AC-2, RF-25-AC-4, RF-26-AC-1, RF-26-AC-2, RF-28-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudProducto'
+      responses:
+        '200':
+          description: Ya existía un producto idéntico; se devuelve sin recalcular.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Producto'
+        '201':
+          description: Producto calculado.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Producto'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/productos/{productoId}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/ProductoId'
+    get:
+      tags: [productos]
+      operationId: obtenerProducto
+      summary: Producto con su resultado, parámetros y estado de revisión
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-05-AC-6, RF-13-AC-5, RF-14-AC-4, RF-14-AC-6, RF-17-AC-1, RF-18-AC-1, RF-18-AC-2]
+      responses:
+        '200':
+          description: Producto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Producto'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/productos/{productoId}/eventos-origen:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/ProductoId'
+    get:
+      tags: [productos]
+      operationId: listarEventosOrigen
+      summary: Eventos que producen un resultado
+      description: |
+        `clave` identifica el renglón del resultado (un contacto, una radiobase, un intervalo).
+        El número de eventos devuelto coincide siempre con el valor presentado (RF-16).
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-16-AC-1, RF-16-AC-2, RF-23-AC-3, RF-25-AC-3]
+      parameters:
+        - name: clave
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Página de eventos de origen; `total` coincide con el valor presentado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaEventos'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/productos/{productoId}/revision:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/ProductoId'
+    put:
+      tags: [productos]
+      operationId: revisarProducto
+      summary: Marcar un producto como revisado (coordinador)
+      description: |
+        Idempotente: repetir la petición deja el mismo estado y no agrega otra entrada a la
+        bitácora. La marca se pierde si cambian los parámetros o los datos (RF-18-AC-2).
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-18-AC-1, RF-18-AC-4]
+      responses:
+        '200':
+          description: Producto revisado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Revision'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/dictamenes:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+    get:
+      tags: [dictamenes]
+      operationId: listarDictamenes
+      summary: Dictámenes exportados del caso
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Dictámenes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dictamen'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    post:
+      tags: [dictamenes]
+      operationId: exportarDictamen
+      summary: Componer y exportar un dictamen (PDF y XLSX con un mismo folio)
+      description: |
+        Genera ambos archivos con encabezado de trazabilidad y las leyendas L-1 y L-2, que no se
+        pueden omitir: el esquema no tiene ningún campo para hacerlo (RF-19-AC-3).
+      x-roles: [ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-18-AC-3, RF-18-AC-4, RF-19-AC-1, RF-19-AC-2, RF-19-AC-3, RF-19-AC-5, RF-20-AC-1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoDictamen'
+      responses:
+        '201':
+          description: Dictamen exportado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dictamen'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/dictamenes/{folioExportacion}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/FolioExportacion'
+    get:
+      tags: [dictamenes]
+      operationId: obtenerDictamen
+      summary: Registro de exportación (productos, estado de revisión y hashes)
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-18-AC-3, RF-19-AC-5]
+      responses:
+        '200':
+          description: Dictamen.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dictamen'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/dictamenes/{folioExportacion}/documentos/{formato}:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/FolioExportacion'
+      - name: formato
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [pdf, xlsx]
+    get:
+      tags: [dictamenes]
+      operationId: descargarDictamen
+      summary: Descargar el PDF o el XLSX de un dictamen
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-19-AC-1, RF-19-AC-2, RF-19-AC-3]
+      responses:
+        '200':
+          description: Archivo del dictamen.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /casos/{folio}/dictamenes/{folioExportacion}/regeneraciones:
+    parameters:
+      - $ref: '#/components/parameters/Folio'
+      - $ref: '#/components/parameters/FolioExportacion'
+    post:
+      tags: [dictamenes]
+      operationId: regenerarDictamen
+      summary: Volver a generar un dictamen con el estado de su exportación original
+      description: Crea un dictamen nuevo, con su propio folio y `regeneradoDe` apuntando al original.
+      x-release: 2
+      x-roles: [ANALISTA, MP_PERITO]
+      x-acceptance-criteria: [RF-14-AC-6, RF-20-AC-2, RF-27-AC-2, RF-27-AC-4, RF-28-AC-3]
+      responses:
+        '201':
+          description: Dictamen regenerado.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dictamen'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          description: Los datos del caso se eliminaron ("Datos eliminados el [fecha]").
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problema'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /dictamenes/{folioExportacion}/verificaciones:
+    parameters:
+      - $ref: '#/components/parameters/FolioExportacion'
+    post:
+      tags: [dictamenes]
+      operationId: verificarDictamen
+      summary: Verificar si un archivo presentado coincide con el folio
+      description: |
+        Fuera de `/casos` porque el auditor verifica sin acceder al contenido del caso (RNF-04).
+        Compara el SHA-256 del archivo presentado con los registrados para el folio.
+      x-roles: [ANALISTA, MP_PERITO, AUDITOR]
+      x-acceptance-criteria: [RF-19-AC-4]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Resultado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificacionDictamen'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /bitacora:
+    get:
+      tags: [bitacora]
+      operationId: consultarBitacora
+      summary: Consultar y filtrar la bitácora (auditor)
+      x-roles: [AUDITOR]
+      x-acceptance-criteria: [RF-01-AC-2, RF-01-AC-3, RF-02-AC-3, RF-02-AC-9, RF-03-AC-4, RF-03-AC-5, RF-05-AC-5, RF-06-AC-3, RF-17-AC-1, RF-21-AC-1, RF-21-AC-2, RF-21-AC-3, RF-22-AC-1, RF-27-AC-4, RF-28-AC-1]
+      parameters:
+        - name: folio
+          in: query
+          schema:
+            type: string
+        - name: desde
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: hasta
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: tipoAccion
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limite'
+      responses:
+        '200':
+          description: Página de entradas, en orden de `secuencia`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaBitacora'
+        '400':
+          $ref: '#/components/responses/FiltroInvalido'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /bitacora/verificaciones:
+    post:
+      tags: [bitacora]
+      operationId: verificarBitacora
+      summary: Verificar la cadena de la bitácora, opcionalmente contra un sello diario
+      x-roles: [AUDITOR]
+      x-acceptance-criteria: [RF-22-AC-3, RF-22-AC-4]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudVerificacionBitacora'
+      responses:
+        '200':
+          description: Resultado de la verificación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificacionBitacora'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /bitacora/sellos:
+    get:
+      tags: [bitacora]
+      operationId: listarSellos
+      summary: Sellos diarios de la bitácora (el auditor los guarda fuera del servidor)
+      x-roles: [AUDITOR]
+      x-acceptance-criteria: [RF-22-AC-4]
+      responses:
+        '200':
+          description: Sellos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SelloDiario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+
+  /valores-fabrica:
+    get:
+      tags: [configuracion]
+      operationId: obtenerValoresFabrica
+      summary: Valores de fábrica vigentes (S-08)
+      x-roles: [COORDINADOR, ANALISTA, MP_PERITO]
+      x-acceptance-criteria: []
+      responses:
+        '200':
+          description: Valores vigentes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValoresFabrica'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
+    put:
+      tags: [configuracion]
+      operationId: cambiarValoresFabrica
+      summary: Cambiar los valores de fábrica (coordinador)
+      x-release: 2
+      x-roles: [COORDINADOR]
+      x-acceptance-criteria: [RF-28-AC-1, RF-28-AC-2]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValoresFabrica'
+      responses:
+        '200':
+          description: Valores actualizados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValoresFabrica'
+        '400':
+          $ref: '#/components/responses/SolicitudMalFormada'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/PermisoInsuficiente'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '500':
+          $ref: '#/components/responses/ErrorInterno'
 
 components:
   securitySchemes:
@@ -272,58 +1742,200 @@ components:
         vigencia en `JWT_EXPIRATION` (variables de entorno). Claims: `sub` (id del usuario),
         `rol` (rol activo), `iat`, `exp`.
 
+  parameters:
+    Folio:
+      name: folio
+      in: path
+      required: true
+      description: Folio del caso.
+      schema:
+        type: string
+        example: VIN-2026-000123
+    UsuarioId:
+      name: usuarioId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ArchivoId:
+      name: archivoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CargaId:
+      name: cargaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EventoId:
+      name: eventoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PerfilId:
+      name: perfilId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProductoId:
+      name: productoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FolioExportacion:
+      name: folioExportacion
+      in: path
+      required: true
+      schema:
+        type: string
+        example: EXP-2026-000045
+    Cursor:
+      name: cursor
+      in: query
+      description: |
+        Valor opaco devuelto en `siguienteCursor` de la página anterior; se omite en la primera.
+        Codifica la clave de orden del último elemento (paginación *keyset*), no un desplazamiento.
+      schema:
+        type: string
+    Limite:
+      name: limite
+      in: query
+      description: Elementos por página.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+
   responses:
+    SolicitudMalFormada:
+      description: JSON o formulario mal formado.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
     NoAutenticado:
-      description: Falta el token, o es inválido o expiró.
+      description: Token ausente, inválido o sesión expirada.
       headers:
         WWW-Authenticate:
           schema:
             type: string
             example: Bearer
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
-          example:
-            detail: No autenticado
+            $ref: '#/components/schemas/Problema'
     PermisoInsuficiente:
-      description: Token válido, pero el rol activo no tiene permiso para esta operación.
+      description: El rol activo no tiene permiso para la operación ("Permiso insuficiente").
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/Problema'
           example:
-            detail: Permiso insuficiente
+            type: about:blank
+            title: Permiso insuficiente
+            status: 403
     NoEncontrado:
-      description: El recurso no existe.
+      description: El recurso no existe o el usuario no tiene asignado el caso (respuesta idéntica, RNF-02).
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/Problema'
+    FiltroInvalido:
+      description: Parámetro de consulta con formato o valor inválido (fecha, enumeración o cursor).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Conflicto:
+      description: |
+        La operación no es compatible con el estado actual del recurso; p. ej. el caso está
+        cerrado y es de solo lectura (RF-27-AC-1) o la carga ya no está `PREPARADA`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: about:blank
+            title: El caso está cerrado y es de solo lectura
+            status: 409
     NoProcesable:
-      description: El cuerpo no cumple el esquema o una regla del dominio.
+      description: La solicitud es válida en forma pero viola una regla de validación del dominio.
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: '#/components/schemas/Error'
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: about:blank
+            title: Faltan datos obligatorios
+            status: 422
+            errores:
+              - campo: numeroSolicitud
+                mensaje: 'Faltan: número de solicitud'
+    ErrorInterno:
+      description: Error no previsto; no expone detalles internos.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
 
   schemas:
-    Error:
+    Salud:
       type: object
-      required: [detail]
+      required: [status, postgresql, postgis, timezone]
       properties:
+        status:
+          type: string
+          example: ok
+        postgresql:
+          type: string
+          example: '18.6'
+        postgis:
+          type: string
+          example: 3.6.4
+        timezone:
+          type: string
+          example: UTC
+
+    Problema:
+      type: object
+      description: Detalle de error según RFC 9457 (antes RFC 7807), application/problem+json.
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
         detail:
-          description: Mensaje, o lista de errores de validación.
-          oneOf:
-            - type: string
-            - type: array
-              items:
-                type: object
+          type: string
+        errores:
+          type: array
+          items:
+            type: object
+            required: [mensaje]
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
 
     Rol:
       type: string
       enum: [ADMINISTRADOR, COORDINADOR, ANALISTA, MP_PERITO, AUDITOR]
-
     NuevoUsuario:
       type: object
       additionalProperties: false
@@ -373,30 +1985,6 @@ components:
           type: string
           format: date-time
 
-    UsuarioActual:
-      allOf:
-        - $ref: '#/components/schemas/Usuario'
-        - type: object
-          required: [rolActivo]
-          properties:
-            rolActivo:
-              $ref: '#/components/schemas/Rol'
-
-    Credenciales:
-      type: object
-      additionalProperties: false
-      required: [correo, contrasena]
-      properties:
-        correo:
-          type: string
-          format: email
-        contrasena:
-          type: string
-          format: password
-          writeOnly: true
-        rol:
-          $ref: '#/components/schemas/Rol'
-
     Token:
       type: object
       required: [accessToken, tokenType, expiraEn, rolActivo]
@@ -413,19 +2001,63 @@ components:
         rolActivo:
           $ref: '#/components/schemas/Rol'
 
+    Credenciales:
+      type: object
+      additionalProperties: false
+      required: [correo, contrasena]
+      properties:
+        correo:
+          type: string
+          format: email
+        contrasena:
+          type: string
+          format: password
+          writeOnly: true
+        rol:
+          $ref: '#/components/schemas/Rol'
+
+    UsuarioActual:
+      allOf:
+        - $ref: '#/components/schemas/Usuario'
+        - type: object
+          required: [rolActivo]
+          properties:
+            rolActivo:
+              $ref: '#/components/schemas/Rol'
+
+    UsuarioResumen:
+      type: object
+      required: [id, nombreCompleto, roles]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombreCompleto:
+          type: string
+        roles:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Rol'
+
+    ReferenciaUsuario:
+      type: object
+      required: [usuarioId]
+      properties:
+        usuarioId:
+          type: string
+          format: uuid
+
     EstadoCaso:
       type: string
       enum: [ABIERTO, CERRADO]
 
     NuevoCaso:
       type: object
-      additionalProperties: false
-      required: [numeroSolicitud, mpSolicitanteId]
+      required: [numeroSolicitud, mpSolicitanteId, lineas]
       properties:
         numeroSolicitud:
           type: string
-          minLength: 1
-          maxLength: 100
           example: S-100
         mpSolicitanteId:
           type: string
@@ -433,49 +2065,1279 @@ components:
         analistaId:
           type: string
           format: uuid
-          nullable: true
+        lineas:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/NuevaLinea'
 
     CambioCaso:
       type: object
-      additionalProperties: false
-      required: [numeroSolicitud, mpSolicitanteId, analistaId, estado]
+      required: [estado]
       properties:
-        numeroSolicitud:
-          type: string
-          minLength: 1
-          maxLength: 100
-        mpSolicitanteId:
-          type: string
-          format: uuid
-        analistaId:
-          type: string
-          format: uuid
-          nullable: true
         estado:
-          $ref: '#/components/schemas/EstadoCaso'
+          type: string
+          enum: [CERRADO]
 
-    Caso:
+    CasoResumen:
       type: object
-      required: [folio, numeroSolicitud, estado, mpSolicitanteId, analistaId, creadoEn, cerradoEn]
+      required: [folio, numeroSolicitud, estado]
       properties:
         folio:
           type: string
-          example: C-000001
+          pattern: ^VIN-\d{4}-\d{6}$
+          example: VIN-2026-000123
+          readOnly: true
         numeroSolicitud:
           type: string
         estado:
           $ref: '#/components/schemas/EstadoCaso'
-        mpSolicitanteId:
+        analista:
+          $ref: '#/components/schemas/UsuarioResumen'
+
+    Caso:
+      allOf:
+        - $ref: '#/components/schemas/CasoResumen'
+        - type: object
+          required: [creadoEn, mpSolicitante, lineas]
+          properties:
+            creadoEn:
+              type: string
+              format: date-time
+            cerradoEn:
+              type: string
+              format: date-time
+              nullable: true
+            conservarHasta:
+              type: string
+              format: date
+              nullable: true
+            mpSolicitante:
+              $ref: '#/components/schemas/UsuarioResumen'
+            peritos:
+              type: array
+              items:
+                $ref: '#/components/schemas/UsuarioResumen'
+            lineas:
+              type: array
+              items:
+                $ref: '#/components/schemas/LineaObjetivo'
+
+    NuevaLinea:
+      type: object
+      required: [msisdn]
+      properties:
+        msisdn:
+          type: string
+          description: Se normaliza a E.164 (RF-23).
+          example: '5512345678'
+
+    LineaObjetivo:
+      type: object
+      required: [id, msisdn, msisdnMostrado]
+      properties:
+        id:
           type: string
           format: uuid
-        analistaId:
+        msisdn:
+          type: string
+          description: E.164.
+          example: '+525512345678'
+        msisdnMostrado:
+          type: string
+          example: '5512345678'
+
+    Asignacion:
+      type: object
+      required: [usuario, funcion, desde]
+      properties:
+        usuario:
+          $ref: '#/components/schemas/UsuarioResumen'
+        funcion:
+          type: string
+          enum: [MP_SOLICITANTE, ANALISTA, PERITO]
+        desde:
+          type: string
+          format: date-time
+
+    ResumenCaso:
+      type: object
+      required: [eventos, eventosSinUbicar]
+      properties:
+        eventos:
+          type: integer
+        eventosSinUbicar:
+          type: integer
+        discrepanciasCoordenadas:
+          type: array
+          items:
+            type: object
+            required: [cellId, distanciaM]
+            properties:
+              cellId:
+                type: string
+              distanciaM:
+                type: number
+        camposNoDisponibles:
+          type: array
+          items:
+            type: object
+            required: [archivoId, campos]
+            properties:
+              archivoId:
+                type: string
+                format: uuid
+              campos:
+                type: array
+                items:
+                  type: string
+
+    TipoArchivo:
+      type: string
+      description: '`CATALOGO` (catálogo de radiobases, RF-15) es de release 2.'
+      x-release-2-values: [CATALOGO]
+      enum: [SABANA, CATALOGO]
+
+    NuevoArchivo:
+      type: object
+      required: [archivo, tipo, numeroOficio, concesionario, fechaRecepcion]
+      properties:
+        archivo:
+          type: string
+          format: binary
+        tipo:
+          $ref: '#/components/schemas/TipoArchivo'
+        numeroOficio:
+          type: string
+          minLength: 1
+        concesionario:
+          type: string
+          minLength: 1
+        fechaRecepcion:
+          type: string
+          format: date
+        confirmarDuplicado:
+          type: boolean
+          default: false
+
+    Archivo:
+      type: object
+      required: [id, tipo, numeroOficio, concesionario, fechaRecepcion, sha256, registradoEn]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          $ref: '#/components/schemas/TipoArchivo'
+        numeroOficio:
+          type: string
+        concesionario:
+          type: string
+        fechaRecepcion:
+          type: string
+          format: date
+        nombreOriginal:
+          type: string
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        registradoEn:
+          type: string
+          format: date-time
+        ultimaCarga:
+          $ref: '#/components/schemas/ReferenciaCarga'
+        camposNoDisponibles:
+          type: array
+          items:
+            type: string
+          example: [IMSI]
+
+    ReferenciaCarga:
+      type: object
+      nullable: true
+      required: [id, perfilId, perfilVersion, zonaHoraria]
+      properties:
+        id:
+          type: string
+          format: uuid
+        perfilId:
+          type: string
+          format: uuid
+        perfilVersion:
+          type: integer
+        zonaHoraria:
+          type: string
+          example: America/Mexico_City
+
+    VerificacionIntegridad:
+      type: object
+      required: [resultado, hashRegistrado, hashRecalculado, verificadoEn]
+      properties:
+        resultado:
+          type: string
+          enum: [INTEGRO, ALTERADO]
+        hashRegistrado:
+          type: string
+        hashRecalculado:
+          type: string
+        verificadoEn:
+          type: string
+          format: date-time
+
+    NuevaCarga:
+      type: object
+      required: [archivoId, perfilId, perfilVersion, zonaHoraria]
+      properties:
+        archivoId:
+          type: string
+          format: uuid
+        perfilId:
+          type: string
+          format: uuid
+        perfilVersion:
+          type: integer
+          minimum: 1
+        zonaHoraria:
+          type: string
+          description: Zona IANA confirmada por el analista (RF-05). No es parte del perfil.
+          example: America/Mexico_City
+
+    CambioCarga:
+      type: object
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [CONFIRMADA, CANCELADA]
+
+    EstadoCarga:
+      type: string
+      enum: [PREPARADA, CONFIRMADA, EN_PROCESO, CONCLUIDA, FALLIDA, CANCELADA]
+
+    Carga:
+      type: object
+      required: [id, archivoId, perfilId, perfilVersion, zonaHoraria, estado]
+      properties:
+        id:
+          type: string
+          format: uuid
+        archivoId:
+          type: string
+          format: uuid
+        perfilId:
+          type: string
+          format: uuid
+        perfilVersion:
+          type: integer
+        zonaHoraria:
+          type: string
+        estado:
+          $ref: '#/components/schemas/EstadoCarga'
+        avance:
+          type: number
+          minimum: 0
+          maximum: 1
+        vistaPrevia:
+          type: array
+          maxItems: 10
+          description: Primeras filas interpretadas (RF-04-AC-2).
+          items:
+            $ref: '#/components/schemas/Evento'
+        resumen:
+          $ref: '#/components/schemas/ResumenCalidad'
+        error:
+          type: string
+          nullable: true
+          description: Motivo si la carga falló; en ese caso no se aplicó ningún cambio (RNF-10).
+
+    ResumenCalidad:
+      type: object
+      nullable: true
+      description: Resumen de calidad al concluir (RF-04-AC-11).
+      required: [renglonesOriginales, eventosCargados, noInterpretables, duplicadosMarcados, sinCoordenadas]
+      properties:
+        renglonesOriginales:
+          type: integer
+        eventosCargados:
+          type: integer
+        noInterpretables:
+          type: integer
+        duplicadosMarcados:
+          type: integer
+        sinCoordenadas:
+          type: integer
+        contrapartesNoNumericas:
+          type: integer
+        camposNoDisponibles:
+          type: array
+          items:
+            type: string
+
+    RenglonNoInterpretable:
+      type: object
+      required: [numeroRenglon, motivo]
+      properties:
+        numeroRenglon:
+          type: integer
+        motivo:
+          type: string
+          example: Fecha inválida
+
+    TipoEvento:
+      type: string
+      enum: [VOZ, SMS, DATOS]
+
+    MarcaDuplicado:
+      type: string
+      enum: [DUPLICADO_EXACTO, FRAGMENTO_SESION]
+
+    Evento:
+      type: object
+      description: Metadatos de un evento. Sin ningún campo de contenido (RD-01).
+      required: [id, archivoId, numeroRenglon, fechaHoraUtc, fechaHoraMostrada, tipo, excluido]
+      properties:
+        id:
+          type: string
+          format: uuid
+        archivoId:
+          type: string
+          format: uuid
+        numeroRenglon:
+          type: integer
+        fechaHoraUtc:
+          type: string
+          format: date-time
+          example: '2026-03-15T18:00:00Z'
+        fechaHoraMostrada:
+          type: string
+          format: date-time
+          description: En America/Mexico_City (RF-05).
+          example: '2026-03-15T12:00:00-06:00'
+        tipo:
+          $ref: '#/components/schemas/TipoEvento'
+        direccion:
+          type: string
+          enum: [ENTRANTE, SALIENTE]
+          nullable: true
+        resultado:
+          type: string
+          enum: [CONTESTADA, NO_CONTESTADA]
+          nullable: true
+        duracionSeg:
+          type: integer
+          nullable: true
+        msisdnObjetivo:
+          type: string
+        contraparteOriginal:
+          type: string
+          nullable: true
+          example: 044 55 1234 5678
+        contraparteNormalizada:
+          type: string
+          nullable: true
+          example: '+525512345678'
+        contraparteNumerica:
+          type: boolean
+        imei:
+          type: string
+          nullable: true
+          example: '86328012345678'
+        imsi:
+          type: string
+          nullable: true
+        ubicacion:
+          $ref: '#/components/schemas/UbicacionReportada'
+        marca:
+          $ref: '#/components/schemas/MarcaDuplicadoNullable'
+        excluido:
+          type: boolean
+
+    MarcaDuplicadoNullable:
+      type: string
+      enum: [DUPLICADO_EXACTO, FRAGMENTO_SESION]
+      nullable: true
+
+    UbicacionReportada:
+      type: object
+      nullable: true
+      description: |
+        Datos de la radiobase tal como vienen en el renglón, ya convertidos (RF-04-AC-9). Es
+        insumo para calcular áreas; la API nunca la presenta como posición del equipo (RD-02).
+      properties:
+        latitud:
+          type: number
+          nullable: true
+          example: 19.425
+        longitud:
+          type: number
+          nullable: true
+          example: -99.1375
+        azimut:
+          type: integer
+          nullable: true
+        cellId:
+          type: string
+          nullable: true
+        lacTac:
+          type: string
+          nullable: true
+        sinUbicar:
+          type: boolean
+
+    CambioEvento:
+      type: object
+      required: [excluido]
+      properties:
+        excluido:
+          type: boolean
+
+    TraduccionTipo:
+      type: object
+      required: [valorConcesionario, tipo]
+      properties:
+        valorConcesionario:
+          type: string
+          example: VOZ TRANSITO
+        tipo:
+          $ref: '#/components/schemas/TipoEvento'
+        direccion:
+          type: string
+          enum: [ENTRANTE, SALIENTE]
+          nullable: true
+        resultado:
+          type: string
+          enum: [CONTESTADA, NO_CONTESTADA]
+          nullable: true
+
+    DefinicionPerfil:
+      type: object
+      required: [nombre, concesionario, mapeoColumnas, formatoFecha, formatoHora, unidadDuracion, entregaCoordenadas, traducciones]
+      properties:
+        nombre:
+          type: string
+          example: Azul
+        concesionario:
+          type: string
+        encabezados:
+          type: array
+          items:
+            type: string
+        mapeoColumnas:
+          type: object
+          description: Campo de VÍNCULO → columna del archivo.
+          additionalProperties:
+            type: string
+          example:
+            msisdnObjetivo: Telefono
+            fecha: Fecha
+            hora: Hora
+            duracion: Durac. Seg.
+            imei: IMEI
+            latitud: LATITUD
+            longitud: LONGITUD
+            azimut: Azimuth
+        contraparte:
+          type: object
+          properties:
+            salienteYDatos:
+              type: string
+              example: Numero B
+            entrante:
+              type: string
+              example: Numero A
+        formatoFecha:
+          type: string
+          example: dd/mm/aa
+        formatoHora:
+          type: string
+          example: H:MM:SS
+        unidadDuracion:
+          type: string
+          enum: [SEGUNDOS, MINUTOS]
+          default: SEGUNDOS
+        codificacion:
+          type: string
+          description: Codificación de los archivos de texto del concesionario (RF-04-AC-4).
+          enum: [UTF-8, WINDOWS-1252, ISO-8859-1]
+          default: UTF-8
+        separador:
+          type: string
+          nullable: true
+          description: Separador de campos para CSV/TXT; null para `.xlsx`.
+          maxLength: 1
+          example: '|'
+        formatoCoordenadas:
+          type: string
+          enum: [DECIMAL, GMS]
+          nullable: true
+        entregaCoordenadas:
+          type: boolean
+          description: false si el concesionario entrega solo Cell ID y LAC/TAC (RF-29-AC-6).
+        traducciones:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TraduccionTipo'
+
+    NuevoPerfil:
+      oneOf:
+        - $ref: '#/components/schemas/DefinicionPerfil'
+        - type: object
+          required: [copiaDe]
+          properties:
+            copiaDe:
+              type: string
+              format: uuid
+
+    Perfil:
+      type: object
+      required: [id, nombre, concesionario, propietario, versionVigente, definicion]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        concesionario:
+          type: string
+        propietario:
+          $ref: '#/components/schemas/UsuarioResumen'
+        copiadoDe:
           type: string
           format: uuid
           nullable: true
-        creadoEn:
+        versionVigente:
+          type: integer
+        editable:
+          type: boolean
+          description: true solo para el propietario (RF-29-AC-5).
+        definicion:
+          $ref: '#/components/schemas/DefinicionPerfil'
+
+    VersionPerfil:
+      type: object
+      description: Versión inmutable de un perfil; las cargas la referencian por `perfilVersion`.
+      required: [perfilId, version, creadaEn, creadaPor, definicion]
+      properties:
+        perfilId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        creadaEn:
           type: string
           format: date-time
-        cerradoEn:
+        creadaPor:
+          $ref: '#/components/schemas/UsuarioResumen'
+        definicion:
+          $ref: '#/components/schemas/DefinicionPerfil'
+
+    PropuestaMapeo:
+      type: object
+      required: [encabezados, mapeoPropuesto, valoresTipo]
+      properties:
+        encabezados:
+          type: array
+          items:
+            type: string
+        mapeoPropuesto:
+          type: object
+          additionalProperties:
+            type: string
+        formatoCoordenadasDetectado:
+          type: string
+          enum: [DECIMAL, GMS]
+          nullable: true
+        valoresTipo:
+          type: array
+          description: Valores distintos de la columna de tipo, a traducir (RF-29-AC-2).
+          items:
+            type: string
+
+    TipoProducto:
+      type: string
+      description: |
+        `COUBICACION` (RF-11) e `INTERMEDIARIOS` (RF-12) requieren varias líneas con datos y son de
+        release 2; en el release 1 (una sola sábana) responden `422`.
+      x-release-2-values: [COUBICACION, INTERMEDIARIOS]
+      enum: [CONTACTOS, PERNOCTA, DESPLAZAMIENTO, IDENTIFICADORES, RUPTURAS, ACTIVIDAD_DIURNA, VENTANA_ACTIVIDAD, GRAFO, LINEA_TIEMPO, MAPA_AREAS, COUBICACION, INTERMEDIARIOS]
+
+    ParametrosAnalisis:
+      type: object
+      description: Parámetros declarados en el producto (RD-04). Los omitidos toman el valor de fábrica.
+      properties:
+        desde:
+          type: string
+          format: date-time
+        hasta:
+          type: string
+          format: date-time
+        tipoEvento:
+          $ref: '#/components/schemas/TipoEvento'
+        franja:
+          $ref: '#/components/schemas/Franja'
+        orden:
+          type: string
+          enum: [EVENTOS, DURACION]
+        top:
+          type: integer
+          minimum: 1
+        minimoEventos:
+          type: integer
+          minimum: 1
+        agregacion:
+          type: string
+          enum: [DIA, HORA, HORA_DEL_DIA, DIA_SEMANA]
+        periodoReferencia:
+          type: object
+          properties:
+            desde:
+              type: string
+              format: date-time
+            hasta:
+              type: string
+              format: date-time
+        umbralSilencioH:
+          type: number
+        ventanaMin:
+          type: integer
+        distanciaM:
+          type: integer
+        incluirExcluidos:
+          type: boolean
+          default: false
+
+    Franja:
+      type: object
+      required: [inicio, fin]
+      properties:
+        inicio:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          example: '22:00'
+        fin:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          example: '06:00'
+
+    SolicitudProducto:
+      type: object
+      required: [tipo, lineaIds]
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoProducto'
+        lineaIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+        parametros:
+          $ref: '#/components/schemas/ParametrosAnalisis'
+
+    EstadoRevision:
+      type: object
+      required: [revisado]
+      properties:
+        revisado:
+          type: boolean
+        revisadoPor:
+          $ref: '#/components/schemas/UsuarioResumen'
+        revisadoEn:
           type: string
           format: date-time
           nullable: true
+
+    Revision:
+      type: object
+      required: [revisadoPor, revisadoEn]
+      properties:
+        revisadoPor:
+          $ref: '#/components/schemas/UsuarioResumen'
+        revisadoEn:
+          type: string
+          format: date-time
+
+    ProductoResumen:
+      type: object
+      required: [id, tipo, calculadoEn, revision]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          $ref: '#/components/schemas/TipoProducto'
+        calculadoEn:
+          type: string
+          format: date-time
+        revision:
+          $ref: '#/components/schemas/EstadoRevision'
+
+    Producto:
+      allOf:
+        - $ref: '#/components/schemas/ProductoResumen'
+        - type: object
+          required: [lineaIds, parametros, zonaPresentacion, resultado]
+          properties:
+            lineaIds:
+              type: array
+              items:
+                type: string
+                format: uuid
+            parametros:
+              $ref: '#/components/schemas/ParametrosAnalisis'
+            zonaPresentacion:
+              type: string
+              example: America/Mexico_City
+            etiqueta:
+              type: string
+              description: Texto a mostrar; p. ej. "Zona de pernocta probable" (RF-08-AC-7).
+            resultado:
+              $ref: '#/components/schemas/ResultadoProducto'
+            zonas:
+              type: array
+              description: Áreas de presencia probable, nunca puntos (RF-14, RD-02).
+              items:
+                $ref: '#/components/schemas/ZonaCobertura'
+
+    ResultadoProducto:
+      description: Resultado según el tipo del producto.
+      oneOf:
+        - $ref: '#/components/schemas/ResultadoContactos'
+        - $ref: '#/components/schemas/ResultadoPernocta'
+        - $ref: '#/components/schemas/ResultadoSecuencia'
+        - $ref: '#/components/schemas/ResultadoIdentificadores'
+        - $ref: '#/components/schemas/ResultadoRupturas'
+        - $ref: '#/components/schemas/ResultadoActividad'
+        - $ref: '#/components/schemas/ResultadoGrafo'
+        - $ref: '#/components/schemas/ResultadoLineaTiempo'
+        - $ref: '#/components/schemas/ResultadoCoubicacion'
+        - $ref: '#/components/schemas/ResultadoIntermediarios'
+        - $ref: '#/components/schemas/ResultadoNoDisponible'
+
+    ResultadoNoDisponible:
+      type: object
+      description: El producto no se pudo calcular con los datos disponibles (RF-08-AC-8, RF-10-AC-3, RF-12-AC-3).
+      required: [disponible, motivo]
+      properties:
+        disponible:
+          type: boolean
+          enum: [false]
+        motivo:
+          type: string
+          example: 'Eventos insuficientes en la franja: 9 de un mínimo de 10'
+
+    ResultadoContactos:
+      type: object
+      required: [totalContactos, contactos]
+      properties:
+        totalContactos:
+          type: integer
+          description: Para mostrar "15 de 40 contactos" (RF-07-AC-8).
+        contactos:
+          type: array
+          items:
+            type: object
+            required: [clave, numeroMostrado, eventos, duracionSeg, entrantes, salientes, reciprocidad]
+            properties:
+              clave:
+                type: string
+              numeroMostrado:
+                type: string
+              eventos:
+                type: integer
+              duracionSeg:
+                type: integer
+              entrantes:
+                type: integer
+              salientes:
+                type: integer
+              contestadas:
+                type: integer
+              noContestadas:
+                type: integer
+              reciprocidad:
+                type: string
+                enum: [RECIPROCO, SOLO_SALIENTE, SOLO_ENTRANTE]
+              primeraComunicacion:
+                type: string
+                format: date
+              ultimaComunicacion:
+                type: string
+                format: date
+              diasConContacto:
+                type: integer
+
+    ResultadoPernocta:
+      type: object
+      required: [nochesConEventos, entreSemana, finDeSemana]
+      properties:
+        nochesConEventos:
+          type: integer
+        entreSemana:
+          type: array
+          description: Una radiobase, o varias si empatan (RF-08-AC-4).
+          items:
+            $ref: '#/components/schemas/PresenciaRadiobase'
+        finDeSemana:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresenciaRadiobase'
+
+    PresenciaRadiobase:
+      type: object
+      required: [clave, radiobaseId, noches, eventos]
+      properties:
+        clave:
+          type: string
+        radiobaseId:
+          type: string
+        noches:
+          type: integer
+        dias:
+          type: integer
+        eventos:
+          type: integer
+
+    ResultadoSecuencia:
+      type: object
+      required: [secuencia]
+      properties:
+        secuencia:
+          type: array
+          items:
+            type: object
+            required: [clave, inicio]
+            properties:
+              clave:
+                type: string
+              radiobaseId:
+                type: string
+                nullable: true
+              inicio:
+                type: string
+                format: date-time
+              sinUbicar:
+                type: boolean
+
+    ResultadoIdentificadores:
+      type: object
+      required: [imeis, deteccionCambioChip]
+      properties:
+        imeis:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsoIdentificador'
+        imsis:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsoIdentificador'
+        deteccionCambioChip:
+          type: object
+          required: [habilitada]
+          properties:
+            habilitada:
+              type: boolean
+            motivo:
+              type: string
+              nullable: true
+              example: Los archivos de esta línea no traen IMSI
+            imeisConVariosImsi:
+              type: array
+              items:
+                type: string
+
+    UsoIdentificador:
+      type: object
+      required: [clave, valor, primerEvento, ultimoEvento]
+      properties:
+        clave:
+          type: string
+        valor:
+          type: string
+        primerEvento:
+          type: string
+          format: date-time
+        ultimoEvento:
+          type: string
+          format: date-time
+
+    ResultadoRupturas:
+      type: object
+      required: [periodoAnalisis, periodoReferencia, rupturas]
+      properties:
+        periodoAnalisis:
+          $ref: '#/components/schemas/Intervalo'
+        periodoReferencia:
+          $ref: '#/components/schemas/Intervalo'
+        rupturas:
+          type: array
+          items:
+            type: object
+            required: [clave, tipo]
+            properties:
+              clave:
+                type: string
+              tipo:
+                type: string
+                enum: [SILENCIO, HORARIO_ATIPICO, ZONA_NUEVA]
+              intervalo:
+                $ref: '#/components/schemas/Intervalo'
+              radiobaseId:
+                type: string
+                nullable: true
+
+    Intervalo:
+      type: object
+      required: [desde, hasta]
+      properties:
+        desde:
+          type: string
+          format: date-time
+        hasta:
+          type: string
+          format: date-time
+
+    ResultadoActividad:
+      type: object
+      properties:
+        actividadDiurna:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresenciaRadiobase'
+        ventanaActividad:
+          type: object
+          properties:
+            inicioMediana:
+              type: string
+              example: '07:30'
+            finMediana:
+              type: string
+              example: '23:00'
+
+    ResultadoGrafo:
+      type: object
+      required: [nodos, aristas]
+      properties:
+        nodos:
+          type: array
+          items:
+            type: object
+            required: [clave, numeroMostrado, esObjetivo]
+            properties:
+              clave:
+                type: string
+              numeroMostrado:
+                type: string
+              esObjetivo:
+                type: boolean
+              esIntermediario:
+                type: boolean
+        aristas:
+          type: array
+          items:
+            type: object
+            required: [origen, destino, eventos]
+            properties:
+              origen:
+                type: string
+              destino:
+                type: string
+              eventos:
+                type: integer
+
+    ResultadoLineaTiempo:
+      type: object
+      required: [agregacion, barras]
+      properties:
+        agregacion:
+          type: string
+          enum: [DIA, HORA, HORA_DEL_DIA, DIA_SEMANA]
+        barras:
+          type: array
+          items:
+            type: object
+            required: [clave, etiqueta, eventos]
+            properties:
+              clave:
+                type: string
+              etiqueta:
+                type: string
+              eventos:
+                type: integer
+
+    ResultadoCoubicacion:
+      type: object
+      required: [coincidencias]
+      properties:
+        coincidencias:
+          type: array
+          items:
+            type: object
+            required: [clave, lineas, radiobases, distanciaM, horas]
+            properties:
+              clave:
+                type: string
+              lineas:
+                type: array
+                items:
+                  type: string
+              radiobases:
+                type: array
+                items:
+                  type: string
+              distanciaM:
+                type: number
+              horas:
+                type: array
+                items:
+                  type: string
+                  format: date-time
+              sinUbicar:
+                type: boolean
+
+    ResultadoIntermediarios:
+      type: object
+      required: [intermediarios]
+      properties:
+        intermediarios:
+          type: array
+          items:
+            type: object
+            required: [clave, numeroMostrado, eventosPorLinea]
+            properties:
+              clave:
+                type: string
+              numeroMostrado:
+                type: string
+              eventosPorLinea:
+                type: object
+                additionalProperties:
+                  type: integer
+
+    ZonaCobertura:
+      type: object
+      description: Área de presencia probable (RF-14). La geometría es siempre un polígono.
+      required: [radiobaseId, entorno, radioM, forma, geometria]
+      properties:
+        radiobaseId:
+          type: string
+        entorno:
+          type: string
+          enum: [URBANA, RURAL]
+        radioM:
+          type: integer
+        forma:
+          type: string
+          enum: [CIRCULO, SECTOR_120]
+        etiqueta:
+          type: string
+        geometria:
+          $ref: '#/components/schemas/PoligonoGeoJSON'
+
+    PoligonoGeoJSON:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          items:
+            type: array
+            minItems: 4
+            items:
+              type: array
+              minItems: 2
+              maxItems: 2
+              items:
+                type: number
+
+    NuevoDictamen:
+      type: object
+      required: [productoIds]
+      properties:
+        productoIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+
+    Dictamen:
+      type: object
+      required: [folioExportacion, folioCaso, exportadoPor, exportadoEn, productos, sha256Pdf, sha256Xlsx]
+      properties:
+        folioExportacion:
+          type: string
+        folioCaso:
+          type: string
+        analista:
+          $ref: '#/components/schemas/UsuarioResumen'
+        exportadoPor:
+          $ref: '#/components/schemas/UsuarioResumen'
+        exportadoEn:
+          type: string
+          format: date-time
+        regeneradoDe:
+          type: string
+          nullable: true
+        productos:
+          type: array
+          items:
+            type: object
+            required: [productoId, tipo, estadoRevision]
+            properties:
+              productoId:
+                type: string
+                format: uuid
+              tipo:
+                $ref: '#/components/schemas/TipoProducto'
+              estadoRevision:
+                type: string
+                example: Sin revisión del coordinador
+        hashesOrigen:
+          type: array
+          items:
+            type: string
+        sha256Pdf:
+          type: string
+        sha256Xlsx:
+          type: string
+
+    VerificacionDictamen:
+      type: object
+      required: [resultado]
+      properties:
+        resultado:
+          type: string
+          enum: [COINCIDE, NO_COINCIDE]
+        formato:
+          type: string
+          enum: [pdf, xlsx]
+          nullable: true
+
+    EntradaBitacora:
+      type: object
+      required: [secuencia, fechaHora, tipoAccion, hash, hashAnterior]
+      properties:
+        secuencia:
+          type: integer
+        fechaHora:
+          type: string
+          format: date-time
+        usuario:
+          $ref: '#/components/schemas/UsuarioResumen'
+        rolEjercido:
+          description: Rol activo con el que se ejecutó la acción; incluye ADMINISTRADOR (R-14).
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Rol'
+        folioCaso:
+          type: string
+          nullable: true
+        tipoAccion:
+          type: string
+          example: CARGA
+        parametros:
+          type: object
+          additionalProperties: true
+        hashAnterior:
+          type: string
+        hash:
+          type: string
+
+    PaginaBitacora:
+      type: object
+      required: [elementos, siguienteCursor]
+      properties:
+        elementos:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntradaBitacora'
+        siguienteCursor:
+          type: string
+          nullable: true
+          description: null en la última página.
+
+    PaginaEventos:
+      type: object
+      required: [elementos, total, siguienteCursor]
+      properties:
+        elementos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evento'
+        total:
+          type: integer
+          description: Total de eventos que cumplen el filtro (RF-16-AC-1).
+        siguienteCursor:
+          type: string
+          nullable: true
+          description: null en la última página.
+
+    SolicitudVerificacionBitacora:
+      type: object
+      properties:
+        sello:
+          type: string
+          description: Hash del sello diario que el auditor guardó fuera del servidor.
+        fecha:
+          type: string
+          format: date
+
+    VerificacionBitacora:
+      type: object
+      required: [cadenaIntegra]
+      properties:
+        cadenaIntegra:
+          type: boolean
+        primeraEntradaAlterada:
+          type: integer
+          nullable: true
+        coincideConSello:
+          type: boolean
+          nullable: true
+
+    SelloDiario:
+      type: object
+      required: [fecha, hashUltimaEntrada]
+      properties:
+        fecha:
+          type: string
+          format: date
+        hashUltimaEntrada:
+          type: string
+
+    ValoresFabrica:
+      type: object
+      required: [franjaNocturna, franjaLaboral, radioUrbanoM, radioRuralM, distanciaUrbanaM, umbralSilencioH, minimoEventosPernocta, ventanaCoubicacionMin, distanciaCoubicacionM]
+      properties:
+        franjaNocturna:
+          $ref: '#/components/schemas/Franja'
+        franjaLaboral:
+          $ref: '#/components/schemas/Franja'
+        radioUrbanoM:
+          type: integer
+          example: 1000
+        radioRuralM:
+          type: integer
+          example: 5000
+        distanciaUrbanaM:
+          type: integer
+          example: 2000
+        umbralSilencioH:
+          type: number
+          example: 12
+        minimoEventosPernocta:
+          type: integer
+          example: 10
+        ventanaCoubicacionMin:
+          type: integer
+          example: 15
+        distanciaCoubicacionM:
+          type: integer
+          example: 500

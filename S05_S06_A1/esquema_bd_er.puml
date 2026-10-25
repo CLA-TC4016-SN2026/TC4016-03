@@ -1,0 +1,243 @@
+' Diagrama entidad-relación generado del catálogo de PostgreSQL tras importar esquema_bd.sql
+' (S05-S06-A1). * = llave primaria; NN = NOT NULL; FK = llave foránea.
+@startuml esquema_bd_er
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+title VÍNCULO — Modelo entidad-relación (esquema_bd.sql)
+entity archivos {
+  {field} *id : uuid
+  {field} caso_folio : varchar(15) <<NN>> <<FK>>
+  {field} tipo : tipo_archivo <<NN>>
+  {field} numero_oficio : varchar(100) <<NN>>
+  {field} concesionario : varchar(100) <<NN>>
+  {field} fecha_recepcion : date <<NN>>
+  {field} sha256 : char(64) <<NN>>
+  {field} nombre_original : varchar(255) <<NN>>
+  {field} registrado_en : timestamptz <<NN>>
+}
+entity asignaciones {
+  {field} *id : uuid
+  {field} caso_folio : varchar(15) <<NN>> <<FK>>
+  {field} usuario_id : uuid <<NN>> <<FK>>
+  {field} funcion : funcion_asignacion <<NN>>
+  {field} desde : timestamptz <<NN>>
+  {field} hasta : timestamptz
+}
+entity cargas {
+  {field} *id : uuid
+  {field} archivo_id : uuid <<NN>> <<FK>>
+  {field} version_perfil_id : uuid <<NN>> <<FK>>
+  {field} estado : estado_carga <<NN>>
+  {field} error : text
+  {field} zona_horaria : varchar(64) <<NN>>
+  {field} iniciada_en : timestamptz <<NN>>
+  {field} concluida_en : timestamptz
+  {field} renglones_originales : integer
+  {field} campos_no_disponibles : text[]
+}
+entity casos {
+  {field} *folio : varchar(15)
+  {field} numero_solicitud : varchar(50) <<NN>>
+  {field} estado : estado_caso <<NN>>
+  {field} creado_por : uuid <<NN>> <<FK>>
+  {field} creado_en : timestamptz <<NN>>
+  {field} cerrado_en : timestamptz
+  {field} conservar_hasta : date
+}
+entity dictamen_productos {
+  {field} *folio_exportacion : varchar(30) <<FK>>
+  {field} *producto_id : uuid <<FK>>
+}
+entity dictamenes {
+  {field} *folio_exportacion : varchar(30)
+  {field} caso_folio : varchar(15) <<NN>> <<FK>>
+  {field} exportado_por : uuid <<NN>> <<FK>>
+  {field} exportado_en : timestamptz <<NN>>
+  {field} sha256_pdf : char(64) <<NN>>
+  {field} sha256_xlsx : char(64) <<NN>>
+  {field} regenerado_de : varchar(30) <<FK>>
+}
+entity entradas_bitacora {
+  {field} *secuencia : bigint
+  {field} fecha_hora : timestamptz <<NN>>
+  {field} usuario_id : uuid <<FK>>
+  {field} rol_ejercido : rol
+  {field} caso_folio : varchar(15) <<FK>>
+  {field} tipo_accion : varchar(50) <<NN>>
+  {field} parametros : jsonb
+  {field} hash_anterior : char(64)
+  {field} hash : char(64) <<NN>>
+}
+entity eventos {
+  {field} *id : uuid
+  {field} carga_id : uuid <<NN>> <<FK>>
+  {field} linea_objetivo_id : uuid <<NN>> <<FK>>
+  {field} fecha_hora_utc : timestamptz <<NN>>
+  {field} tipo : tipo_evento <<NN>>
+  {field} direccion : direccion
+  {field} resultado : resultado
+  {field} duracion_seg : integer
+  {field} contraparte_original : varchar(50)
+  {field} contraparte_normalizada : varchar(16)
+  {field} contraparte_numerica : boolean <<NN>>
+  {field} imei : varchar(16)
+  {field} imsi : varchar(15)
+  {field} numero_renglon : integer <<NN>>
+  {field} marca : marca_duplicado
+  {field} excluido : boolean <<NN>>
+  {field} latitud : numeric
+  {field} longitud : numeric
+  {field} azimut : smallint
+  {field} cell_id : varchar(50)
+  {field} lac_tac : varchar(20)
+  {field} radiobase_id : uuid <<FK>>
+}
+entity lineas_objetivo {
+  {field} *id : uuid
+  {field} caso_folio : varchar(15) <<NN>> <<FK>>
+  {field} msisdn : varchar(16) <<NN>>
+}
+entity perfiles_concesionario {
+  {field} *id : uuid
+  {field} nombre : varchar(100) <<NN>>
+  {field} concesionario : varchar(100) <<NN>>
+  {field} propietario_id : uuid <<NN>> <<FK>>
+  {field} copiado_de : uuid <<FK>>
+}
+entity producto_eventos {
+  {field} *producto_id : uuid <<FK>>
+  {field} *evento_id : uuid <<FK>>
+}
+entity producto_lineas {
+  {field} *producto_id : uuid <<FK>>
+  {field} *linea_id : uuid <<FK>>
+}
+entity productos_analisis {
+  {field} *id : uuid
+  {field} caso_folio : varchar(15) <<NN>> <<FK>>
+  {field} tipo : tipo_producto <<NN>>
+  {field} parametros : jsonb <<NN>>
+  {field} rango_fechas : tstzrange
+  {field} zona_presentacion : varchar(64) <<NN>>
+  {field} calculado_en : timestamptz <<NN>>
+}
+entity radiobases {
+  {field} *id : uuid
+  {field} catalogo_id : uuid <<FK>>
+  {field} concesionario : varchar(100) <<NN>>
+  {field} cell_id : varchar(50)
+  {field} latitud : numeric <<NN>>
+  {field} longitud : numeric <<NN>>
+  {field} azimut : smallint
+}
+entity renglones_no_interpretables {
+  {field} *id : uuid
+  {field} carga_id : uuid <<NN>> <<FK>>
+  {field} numero_renglon : integer <<NN>>
+  {field} motivo : text <<NN>>
+}
+entity revisiones {
+  {field} *producto_id : uuid <<FK>>
+  {field} coordinador_id : uuid <<NN>> <<FK>>
+  {field} revisado_en : timestamptz <<NN>>
+}
+entity sellos_diarios {
+  {field} *fecha : date
+  {field} entrada_secuencia : bigint <<NN>> <<FK>>
+  {field} hash_ultima_entrada : char(64) <<NN>>
+}
+entity traducciones_tipo {
+  {field} *id : uuid
+  {field} version_perfil_id : uuid <<NN>> <<FK>>
+  {field} valor_concesionario : varchar(100) <<NN>>
+  {field} tipo : tipo_evento <<NN>>
+  {field} direccion : direccion
+  {field} resultado : resultado
+}
+entity usuarios {
+  {field} *id : uuid
+  {field} correo : varchar(254) <<NN>>
+  {field} nombre_completo : varchar(200) <<NN>>
+  {field} contrasena_hash : text <<NN>>
+  {field} roles : rol[] <<NN>>
+  {field} intentos_fallidos : integer <<NN>>
+  {field} bloqueado_hasta : timestamptz
+  {field} activo : boolean <<NN>>
+  {field} creado_en : timestamptz <<NN>>
+}
+entity valores_fabrica {
+  {field} *id : smallint
+  {field} franja_nocturna_inicio : time <<NN>>
+  {field} franja_nocturna_fin : time <<NN>>
+  {field} franja_laboral_inicio : time <<NN>>
+  {field} franja_laboral_fin : time <<NN>>
+  {field} radio_urbano_m : integer <<NN>>
+  {field} radio_rural_m : integer <<NN>>
+  {field} distancia_urbana_m : integer <<NN>>
+  {field} ventana_coubicacion_min : integer <<NN>>
+  {field} distancia_coubicacion_m : integer <<NN>>
+  {field} umbral_silencio_h : numeric <<NN>>
+  {field} minimo_eventos_pernocta : integer <<NN>>
+}
+entity versiones_perfil {
+  {field} *id : uuid
+  {field} perfil_id : uuid <<NN>> <<FK>>
+  {field} numero : integer <<NN>>
+  {field} creada_en : timestamptz <<NN>>
+  {field} creada_por : uuid <<NN>> <<FK>>
+  {field} encabezados : text[]
+  {field} mapeo_columnas : jsonb <<NN>>
+  {field} contraparte : jsonb
+  {field} codificacion : varchar(12) <<NN>>
+  {field} separador : char(1)
+  {field} formato_fecha : varchar(30) <<NN>>
+  {field} formato_hora : varchar(30) <<NN>>
+  {field} unidad_duracion : varchar(8) <<NN>>
+  {field} formato_coordenadas : varchar(7)
+  {field} entrega_coordenadas : boolean <<NN>>
+}
+entity zonas_cobertura {
+  {field} *id : uuid
+  {field} producto_id : uuid <<NN>> <<FK>>
+  {field} radiobase_id : uuid <<NN>> <<FK>>
+  {field} entorno : entorno <<NN>>
+  {field} radio_m : integer <<NN>>
+  {field} forma : forma_zona <<NN>>
+  {field} geometria : geometry <<NN>>
+}
+archivos }o--|| casos : caso_folio
+asignaciones }o--|| casos : caso_folio
+asignaciones }o--|| usuarios : usuario_id
+cargas }o--|| archivos : archivo_id
+cargas }o--|| versiones_perfil : version_perfil_id
+casos }o--|| usuarios : creado_por
+dictamen_productos }o--|| dictamenes : folio_exportacion
+dictamen_productos }o--|| productos_analisis : producto_id
+dictamenes }o--|| casos : caso_folio
+dictamenes }o--|| usuarios : exportado_por
+dictamenes }o..o| dictamenes : regenerado_de
+entradas_bitacora }o--o| usuarios : usuario_id
+entradas_bitacora }o--o| casos : caso_folio
+eventos }o--|| cargas : carga_id
+eventos }o--|| lineas_objetivo : linea_objetivo_id
+eventos }o--o| radiobases : radiobase_id
+lineas_objetivo }o--|| casos : caso_folio
+perfiles_concesionario }o--|| usuarios : propietario_id
+perfiles_concesionario }o..o| perfiles_concesionario : copiado_de
+producto_eventos }o--|| productos_analisis : producto_id
+producto_eventos }o--|| eventos : evento_id
+producto_lineas }o--|| productos_analisis : producto_id
+producto_lineas }o--|| lineas_objetivo : linea_id
+productos_analisis }o--|| casos : caso_folio
+radiobases }o--o| archivos : catalogo_id
+renglones_no_interpretables }o--|| cargas : carga_id
+revisiones }o--|| productos_analisis : producto_id
+revisiones }o--|| usuarios : coordinador_id
+sellos_diarios }o--|| entradas_bitacora : entrada_secuencia
+traducciones_tipo }o--|| versiones_perfil : version_perfil_id
+versiones_perfil }o--|| perfiles_concesionario : perfil_id
+versiones_perfil }o--|| usuarios : creada_por
+zonas_cobertura }o--|| productos_analisis : producto_id
+zonas_cobertura }o--|| radiobases : radiobase_id
+@enduml

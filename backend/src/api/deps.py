@@ -8,13 +8,12 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-import psycopg
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.core.seguridad import TokenInvalido, decodificar_token
 from src.db import usuarios as repo_usuarios
-from src.db.connection import get_db
+from src.db.connection import Db
 from src.schemas.auth import Rol, UsuarioActual
 
 # auto_error=False: la respuesta 401 la arma `usuario_actual`, con un mensaje único.
@@ -30,7 +29,7 @@ _PERMISO_INSUFICIENTE = HTTPException(status.HTTP_403_FORBIDDEN, detail="Permiso
 
 def usuario_actual(
     credenciales: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-    db: Annotated[psycopg.Connection, Depends(get_db)],
+    db: Db,
 ) -> UsuarioActual:
     # Sin token, token mal formado, firma inválida o expirado: misma respuesta.
     if credenciales is None:

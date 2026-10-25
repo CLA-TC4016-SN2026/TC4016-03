@@ -1,0 +1,315 @@
+' =====================================================================
+'  VINCULO - Diagrama de clases consolidado del Equipo 3 - Actividad S05-S06-A1
+'  Base: S04_A1/diagrama_clases.puml (J. B. Oviedo), acordada por el equipo el 2026-10-24.
+'  Cambios C-1..C-8 y, tras revisar el SQL, R-15 y R-19: ver S05_S06_A1/diferencias_diseno.md
+'  Fuente: S03_A1/SRS_equipo.md (RF-01..RF-29, RD-01..RD-13)
+'  Gris = fuera del alcance de esta etapa (decision del PO, 03/10/2026)
+' =====================================================================
+
+@startuml diagrama_clases_equipo
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam class {
+  BackgroundColor<<siguiente release>> #ECECEC
+  BorderColor<<siguiente release>> #9A9A9A
+  FontColor<<siguiente release>> #6B6B6B
+  AttributeFontColor<<siguiente release>> #6B6B6B
+}
+hide empty members
+hide <<valor>> circle
+
+title VÍNCULO — Modelo de clases del dominio (v3: consolidado del Equipo 3, S05-S06-A1)
+
+  enum Rol {
+    ADMINISTRADOR
+    ANALISTA
+    COORDINADOR
+    MP_PERITO
+    AUDITOR
+  }
+  class Usuario {
+    correo : email {único}
+    nombreCompleto : str
+    hashContrasena : str
+    roles : set[Rol] [1..*]
+    intentosFallidos : int
+    bloqueadoHasta : datetime [0..1]
+    activo : bool
+    creadoEn : datetime
+  }
+
+  enum EstadoCaso {
+    ABIERTO
+    CERRADO
+  }
+  enum FuncionAsignacion {
+    MP_SOLICITANTE
+    ANALISTA
+    PERITO
+  }
+  class Caso {
+    folio : str
+    numeroSolicitud : str
+    estado : EstadoCaso
+    creadoEn : datetime
+    cerradoEn : datetime [0..1]
+    conservarHasta : date [0..1]
+  }
+  class LineaObjetivo {
+    msisdn : E164
+  }
+  class Asignacion {
+    funcion : FuncionAsignacion
+    desde : datetime
+    hasta : datetime [0..1]
+  }
+
+  abstract class ArchivoRecibido {
+    numeroOficio : str
+    concesionario : str
+    fechaRecepcion : date
+    sha256 : str
+    nombreOriginal : str
+    registradoEn : datetime
+  }
+  class Sabana
+  class CatalogoRadiobases <<siguiente release>>
+  class PerfilConcesionario {
+    nombre : str
+    concesionario : str
+  }
+  class VersionPerfil {
+    numero : int
+    creadaEn : datetime
+    encabezados : list[str]
+    mapeoColumnas : dict
+    contraparte : dict [0..1]
+    codificacion : UTF-8 | WINDOWS-1252 | ISO-8859-1
+    separador : char [0..1]
+    formatoFecha : str
+    formatoHora : str
+    unidadDuracion : str
+    formatoCoordenadas : str
+    entregaCoordenadas : bool
+  }
+  class TraduccionTipo {
+    valorConcesionario : str
+    tipo : TipoEvento
+    direccion : Direccion [0..1]
+    resultado : Resultado [0..1]
+  }
+  enum EstadoCarga {
+    PREPARADA
+    CONFIRMADA
+    EN_PROCESO
+    CONCLUIDA
+    FALLIDA
+    CANCELADA
+  }
+  class Carga {
+    estado : EstadoCarga
+    error : str [0..1]
+    zonaHoraria : ZonaIANA
+    iniciadaEn : datetime
+    concluidaEn : datetime [0..1]
+    renglonesOriginales : int
+    camposNoDisponibles : list[str]
+  }
+  class RenglonNoInterpretable {
+    numeroRenglon : int
+    motivo : str
+  }
+
+  enum TipoEvento {
+    VOZ
+    SMS
+    DATOS
+  }
+  enum Direccion {
+    ENTRANTE
+    SALIENTE
+  }
+  enum Resultado {
+    CONTESTADA
+    NO_CONTESTADA
+  }
+  enum MarcaDuplicado {
+    DUPLICADO_EXACTO
+    FRAGMENTO_SESION
+  }
+  class Evento {
+    fechaHoraUtc : datetime
+    tipo : TipoEvento
+    direccion : Direccion [0..1]
+    resultado : Resultado [0..1]
+    duracionSeg : int [0..1]
+    contraparteOriginal : str [0..1]
+    contraparteNormalizada : E164 [0..1]
+    contraparteNumerica : bool
+    imei : str [0..1]
+    imsi : str [0..1]
+    numeroRenglon : int
+    marca : MarcaDuplicado [0..1]
+    excluido : bool
+  }
+  class UbicacionReportada <<valor>> {
+    latitud : decimal [0..1]
+    longitud : decimal [0..1]
+    azimut : int [0..1]
+    cellId : str [0..1]
+    lacTac : str [0..1]
+  }
+  class Radiobase {
+    concesionario : str
+    cellId : str [0..1]
+    latitud : decimal
+    longitud : decimal
+    azimut : int [0..1]
+  }
+
+  abstract class ProductoAnalisis {
+    parametros : dict
+    rangoFechas : rango
+    zonaPresentacion : ZonaIANA
+    calculadoEn : datetime
+  }
+  class RankingContactos
+  class PatronPernocta
+  class Desplazamiento
+  class CambioIdentificadores
+  class RupturaPatron
+  class ActividadDiurna
+  class CoUbicacion <<siguiente release>>
+  class Intermediarios <<siguiente release>>
+  class ZonaCobertura {
+    entorno : URBANA | RURAL
+    radioM : int
+    forma : CIRCULO | SECTOR_120
+  }
+  class Revision {
+    revisadoEn : datetime
+  }
+  class Dictamen {
+    folioExportacion : str
+    exportadoEn : datetime
+    sha256Pdf : str
+    sha256Xlsx : str
+  }
+
+  class EntradaBitacora {
+    secuencia : int
+    fechaHora : datetime
+    rolEjercido : Rol [0..1]
+    tipoAccion : str
+    parametros : dict
+    hashAnterior : str
+    hash : str
+  }
+  class SelloDiario {
+    fecha : date
+    hashUltimaEntrada : str
+  }
+  class ValoresFabrica <<siguiente release>> {
+    franjaNocturna : rango
+    franjaLaboral : rango
+    radioUrbanoM : int
+    radioRuralM : int
+    distanciaUrbanaM : int
+    ventanaCoubicacionMin : int
+    distanciaCoubicacionM : int
+    umbralSilencioH : decimal
+    minimoEventosPernocta : int
+  }
+
+
+' --- Casos ---
+Caso "1" *-down- "1..20" LineaObjetivo
+Caso "1" *-right- "1..*" Asignacion
+Asignacion "0..*" -right-> "1" Usuario : asignado
+Caso "0..*" -up-> "1" Usuario : creadoPor
+
+' --- Ingesta ---
+Caso "1" *-down- "0..*" ArchivoRecibido
+ArchivoRecibido <|-down- Sabana
+ArchivoRecibido <|-down- CatalogoRadiobases
+Sabana "1" *-down- "0..*" Carga
+Carga "0..*" -left-> "1" VersionPerfil : interpretadaCon
+PerfilConcesionario "1" *-down- "1..*" VersionPerfil
+VersionPerfil "0..*" --> "1" Usuario : creadaPor
+VersionPerfil "1" *-down- "1..*" TraduccionTipo
+PerfilConcesionario "0..*" -up-> "1" Usuario : propietario
+PerfilConcesionario "0..*" --> "0..1" PerfilConcesionario : copiadoDe
+Carga "1" *-left- "0..*" RenglonNoInterpretable
+
+' --- Eventos ---
+Carga "1" *-down- "0..*" Evento
+Evento "0..*" -up-> "1" LineaObjetivo : objetivo
+Evento "1" *-down- "1" UbicacionReportada
+Evento "0..*" -down-> "0..1" Radiobase : atendidoPor
+CatalogoRadiobases "0..*" o-- "1..*" Radiobase
+
+' --- Análisis ---
+RankingContactos -up-|> ProductoAnalisis
+PatronPernocta -up-|> ProductoAnalisis
+Desplazamiento -up-|> ProductoAnalisis
+CambioIdentificadores -up-|> ProductoAnalisis
+RupturaPatron -up-|> ProductoAnalisis
+ActividadDiurna -up-|> ProductoAnalisis
+CoUbicacion -up-|> ProductoAnalisis
+Intermediarios -up-|> ProductoAnalisis
+ProductoAnalisis "0..*" -left-> "1..*" Evento : eventosDeOrigen
+ProductoAnalisis "0..*" --> "1..*" LineaObjetivo : analiza
+ProductoAnalisis "1" *-down- "0..*" ZonaCobertura
+ZonaCobertura "0..*" -left-> "1" Radiobase
+ProductoAnalisis "1" *-right- "0..1" Revision
+Revision "0..*" --> "1" Usuario : coordinador
+Dictamen "0..*" o-down- "1..*" ProductoAnalisis
+Dictamen "0..*" --> "1" Usuario : exportadoPor
+Dictamen "0..*" --> "0..1" Dictamen : regeneradoDe
+
+' --- Trazabilidad ---
+EntradaBitacora "0..1" --> "0..1" EntradaBitacora : anterior
+EntradaBitacora "0..*" -up-> "0..1" Usuario
+EntradaBitacora "0..*" --> "0..1" Caso
+SelloDiario "0..*" -left-> "1" EntradaBitacora : sella
+
+' --- Distribución (sin significado UML) ---
+Rol -[hidden]down- Usuario
+EstadoCarga -[hidden]right- Carga
+EstadoCaso -[hidden]right- FuncionAsignacion
+TipoEvento -[hidden]right- Direccion
+Resultado -[hidden]right- MarcaDuplicado
+Radiobase -[hidden]down- TipoEvento
+ValoresFabrica -[hidden]down- EntradaBitacora
+
+note right of Usuario
+  D-1 y D-2: el rol activo viaja en el JWT
+  (claim rol ∈ usuario.roles) y no se guarda
+  sesión en el servidor (C-6). Cada petición
+  relee la cuenta: desactivarla o quitarle el
+  rol invalida su token. ADMINISTRADOR gestiona
+  cuentas y no ve casos. hashContrasena,
+  intentosFallidos y bloqueadoHasta nunca
+  salen por el API.
+end note
+note as Convenciones
+  Convenciones del modelo (C-8):
+  • Toda entidad persistente tiene id : uuid,
+    salvo Caso (folio VIN-AAAA-NNNNNN) y
+    Dictamen (folioExportacion).
+  • Las asociaciones aparecen en el API como
+    campos (analista, propietario, archivoId…).
+  • Los campos calculados del API (msisdnMostrado,
+    versionVigente, avance…) no se persisten.
+end note
+note right of Evento
+  RD-01: ningún atributo de contenido
+  (ni texto de SMS ni audio).
+end note
+note bottom of Radiobase
+  RD-02: la coordenada de la antena solo
+  sirve para calcular la ZonaCobertura;
+  nunca se presenta como punto.
+end note
+@enduml

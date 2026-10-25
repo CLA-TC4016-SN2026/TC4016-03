@@ -1,20 +1,17 @@
 """Autenticación: registro (solo administrador), inicio de sesión y usuario actual."""
 
-from typing import Annotated
 
-import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from psycopg import errors
 
 from src.api.deps import UsuarioAutenticado, requiere_roles
 from src.core.seguridad import crear_token, hashear_contrasena, verificar_contrasena
 from src.db import usuarios as repo
-from src.db.connection import get_db
+from src.db.connection import Db
 from src.schemas.auth import Credenciales, NuevoUsuario, Rol, Token, Usuario, UsuarioActual
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-Db = Annotated[psycopg.Connection, Depends(get_db)]
 
 _CREDENCIALES_INCORRECTAS = HTTPException(
     status.HTTP_401_UNAUTHORIZED,

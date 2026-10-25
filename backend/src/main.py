@@ -4,34 +4,26 @@ Desarrollo (desde vinculo/backend/):
     uv run uvicorn src.main:app --reload
 """
 
-from fastapi import FastAPI, Request, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
-from src.api import auth, casos, health
+from src.api import auth, casos, health, perfiles, usuarios
 from src.core.config import get_settings
+from src.core.errores import registrar_manejadores
 
 # Falla al arrancar, no en la primera petición, si falta JWT_SECRET o JWT_EXPIRATION.
 get_settings()
 
 app = FastAPI(
     title="VÍNCULO API",
-    version="0.2.0",
+    version="0.3.0",
     summary="Análisis de sábanas telefónicas (CDR): metadatos, nunca contenido.",
 )
 
-
-@app.exception_handler(RequestValidationError)
-async def errores_de_validacion(_: Request, exc: RequestValidationError) -> JSONResponse:
-    # FastAPI repite en "input" el valor rechazado; con una contraseña la devolvería en claro.
-    errores = [{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        content={"detail": jsonable_encoder(errores)},
-    )
-
+# Todos los errores salen como application/problem+json (RFC 9457).
+registrar_manejadores(app)
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(usuarios.router)
 app.include_router(casos.router)
+app.include_router(perfiles.router)

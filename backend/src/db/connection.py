@@ -6,8 +6,10 @@ tablas, la sesión de SQLAlchemy vivirá en este mismo paquete.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Annotated
 
 import psycopg
+from fastapi import Depends
 from psycopg.rows import dict_row
 
 from src.core.config import get_settings
@@ -23,8 +25,13 @@ def get_connection() -> Iterator[psycopg.Connection]:
 def get_db() -> Iterator[psycopg.Connection]:
     """Dependencia de FastAPI: una transacción por petición, con filas como diccionarios.
 
-    Al salir hace commit; si la petición lanza una excepción, rollback.
+    Al salir hace commit; si la petición lanza una excepción, rollback. Usar siempre `Db`.
     """
     with get_connection() as conn:
         conn.row_factory = dict_row
         yield conn
+
+
+# scope="function": el commit ocurre antes de enviar la respuesta. Con el valor por omisión
+# ("request") el cliente recibiría un 201 aunque el commit fallara después.
+Db = Annotated[psycopg.Connection, Depends(get_db, scope="function")]

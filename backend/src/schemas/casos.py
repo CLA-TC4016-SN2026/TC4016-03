@@ -1,12 +1,18 @@
-"""Modelos de entrada y salida de casos. El JSON usa camelCase, como el contrato S04."""
+"""Modelos de casos, líneas objetivo y asignaciones. El JSON usa camelCase, como el contrato.
 
-from datetime import datetime
+Los obligatorios y los límites de dominio (1 a 20 líneas, solicitud no vacía) se validan en
+`src/services/casos.py`, para responder 422 y no 400 (criterio O-6).
+"""
+
+from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
 
 from src.schemas.base import Esquema
+from src.schemas.usuarios import UsuarioResumen
 
 
 class EstadoCaso(StrEnum):
@@ -14,26 +20,52 @@ class EstadoCaso(StrEnum):
     CERRADO = "CERRADO"
 
 
+class FuncionAsignacion(StrEnum):
+    MP_SOLICITANTE = "MP_SOLICITANTE"
+    ANALISTA = "ANALISTA"
+    PERITO = "PERITO"
+
+
+class NuevaLinea(Esquema):
+    msisdn: str = Field(max_length=50)
+
+
+class LineaObjetivo(Esquema):
+    id: UUID
+    msisdn: str
+    msisdn_mostrado: str
+
+
 class NuevoCaso(Esquema):
-    numero_solicitud: str = Field(min_length=1, max_length=100)
+    numero_solicitud: str = Field(max_length=50)
     mp_solicitante_id: UUID
     analista_id: UUID | None = None
+    lineas: list[NuevaLinea]
 
 
 class CambioCaso(Esquema):
-    """PUT: reemplaza todos los campos editables. El folio y las fechas no se editan."""
+    """PATCH: el único cambio admitido es cerrar el caso (O-4)."""
 
-    numero_solicitud: str = Field(min_length=1, max_length=100)
-    mp_solicitante_id: UUID
-    analista_id: UUID | None
-    estado: EstadoCaso
+    estado: Literal["CERRADO"]
 
 
-class Caso(Esquema):
+class CasoResumen(Esquema):
     folio: str
     numero_solicitud: str
     estado: EstadoCaso
-    mp_solicitante_id: UUID
-    analista_id: UUID | None
+    analista: UsuarioResumen | None = None
+
+
+class Caso(CasoResumen):
     creado_en: datetime
     cerrado_en: datetime | None
+    conservar_hasta: date | None
+    mp_solicitante: UsuarioResumen
+    peritos: list[UsuarioResumen]
+    lineas: list[LineaObjetivo]
+
+
+class Asignacion(Esquema):
+    usuario: UsuarioResumen
+    funcion: FuncionAsignacion
+    desde: datetime

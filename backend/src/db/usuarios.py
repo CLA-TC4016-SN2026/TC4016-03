@@ -7,6 +7,24 @@ import psycopg
 
 # Columnas públicas: sin contrasena_hash.
 _COLUMNAS = "id, correo, nombre_completo, roles::text[] AS roles, activo, creado_en"
+_RESUMEN = "id, nombre_completo, roles::text[] AS roles"
+
+
+def listar_activos(conn: psycopg.Connection, rol: str | None) -> list[dict[str, Any]]:
+    return conn.execute(
+        f"""
+        SELECT {_RESUMEN} FROM usuarios
+         WHERE activo AND (%(rol)s::rol IS NULL OR %(rol)s::rol = ANY (roles))
+         ORDER BY nombre_completo, id
+        """,
+        {"rol": rol},
+    ).fetchall()
+
+
+def obtener_activo(conn: psycopg.Connection, usuario_id: UUID) -> dict[str, Any] | None:
+    return conn.execute(
+        f"SELECT {_RESUMEN} FROM usuarios WHERE id = %s AND activo", (usuario_id,)
+    ).fetchone()
 
 
 def crear(
